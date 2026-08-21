@@ -1,0 +1,1 @@
+// Frontend bootstrap reserved for shared HTTP and application setup.
