@@ -1,58 +1,123 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# Campus Virtual
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+Plataforma digital universitaria orientada al estudiante. El proyecto integra identidad digital, credenciales NFC/QR, perfiles académicos, autenticación segura y servicios compartidos para los demás módulos del ecosistema Campus Digital.
 
-## About Laravel
+Este repositorio contiene la base de trabajo del **Equipo 1: Identidad, Acceso, NFC/QR y Perfil del Estudiante**.
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+## Alcance del Equipo 1
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+El equipo es responsable de construir la identidad común que consumen los demás módulos. Ningún dominio externo debe duplicar la lógica de autenticación ni la lectura de credenciales.
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+El alcance inicial contempla:
 
-## Learning Laravel
+- Gestión de cuentas y perfil del estudiante.
+- Autenticación, recuperación de contraseña y confirmación de cuenta.
+- Autenticación de dos factores (2FA) desde la primera versión.
+- Roles y permisos contextuales por negocio, asociación, Consejo o servicio.
+- Registro y ciclo de vida de tarjetas NFC mediante UID simulado.
+- Identidad QR y códigos temporales para validaciones.
+- Dispositivos, sesiones confiables y alertas de acceso.
+- Validación de la condición estudiantil.
+- Consentimientos y preferencias de comunicación.
+- Servicios internos de identidad y credenciales para los demás equipos.
 
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework.
+## Tecnologías
 
-In addition, [Laracasts](https://laracasts.com) contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
+- **Backend:** Laravel 13 y PHP 8.3 o superior.
+- **Frontend:** Vue 3, Inertia.js y Vite.
+- **Autenticación:** Laravel Fortify y Breeze.
+- **Estilos:** Tailwind CSS.
+- **Pruebas:** Pest.
+- **Persistencia:** pendiente de definición entre PostgreSQL, SQL Server o MongoDB.
 
-You can also watch bite-sized lessons with real-world projects on [Laravel Learn](https://laravel.com/learn), where you will be guided through building a Laravel application from scratch while learning PHP fundamentals.
+La base de datos definitiva aún no está configurada. El proyecto conserva una configuración local provisional para permitir el desarrollo del scaffolding y la autenticación.
 
-## Agentic Development
+## Requisitos
 
-Laravel's predictable structure and conventions make it ideal for AI coding agents like Claude Code, Cursor, and GitHub Copilot. Install [Laravel Boost](https://laravel.com/docs/ai) to supercharge your AI workflow:
+- PHP 8.3 o superior.
+- Composer.
+- Node.js y npm.
+- Git.
+
+## Instalación
+
+Clona el repositorio y entra en la carpeta del proyecto:
 
 ```bash
-composer require laravel/boost --dev
-
-php artisan boost:install
+git clone https://github.com/Julian-Darkstar/campus-virtual.git
+cd campus-virtual
 ```
 
-Boost provides your agent 15+ tools and skills that help agents build Laravel applications while following best practices.
+Instala las dependencias de backend y frontend:
 
-## Contributing
+```bash
+composer install
+npm install
+```
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+Crea el archivo de entorno y genera la clave de la aplicación:
 
-## Code of Conduct
+```bash
+cp .env.example .env
+php artisan key:generate
+```
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+Cuando se defina el motor de base de datos, actualiza las variables `DB_*` del archivo `.env` y ejecuta las migraciones correspondientes.
 
-## Security Vulnerabilities
+## Desarrollo local
 
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
+Para iniciar la aplicación en el puerto `8002`:
 
-## License
+```bash
+php artisan serve --host=127.0.0.1 --port=8002
+```
 
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+La aplicación estará disponible en <http://127.0.0.1:8002>.
+
+En otra terminal, ejecuta Vite para recompilar los recursos durante el desarrollo:
+
+```bash
+npm run dev
+```
+
+Para generar los recursos frontend de producción:
+
+```bash
+npm run build
+```
+
+## Pruebas
+
+La suite de pruebas se ejecuta con:
+
+```bash
+php artisan test
+```
+
+También puede utilizarse el script de Composer:
+
+```bash
+composer test
+```
+
+## Estado del proyecto
+
+- [x] Estructura inicial Laravel.
+- [x] Vue 3 + Inertia.js + Vite.
+- [x] Autenticación base con Fortify y Breeze.
+- [x] Soporte de 2FA preparado.
+- [x] Migraciones iniciales de usuarios y 2FA.
+- [ ] Modelo de datos definitivo.
+- [ ] Perfil académico completo del estudiante.
+- [ ] Gestión de UID NFC.
+- [ ] Identidad QR dinámica.
+- [ ] Roles y permisos contextuales.
+- [ ] Servicios y contratos de integración con los demás equipos.
+
+## Repositorio
+
+<https://github.com/Julian-Darkstar/campus-virtual>
+
+## Licencia
+
+La licencia del proyecto se definirá por el equipo antes de la primera versión pública estable.
