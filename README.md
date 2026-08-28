@@ -64,6 +64,36 @@ php artisan key:generate
 
 Cuando se defina el motor de base de datos, actualiza las variables `DB_*` del archivo `.env` y ejecuta las migraciones correspondientes.
 
+## Ramas de desarrollo
+
+Este proyecto utiliza un flujo de Git con dos ramas principales:
+
+### `main`
+
+- **Rama estable** que contiene versiones listas para producción.
+- Cambios solo a través de pull requests revisados.
+- Cada commit en `main` representa una versión funcional y documentada.
+
+### `develop`
+
+- **Rama de integración continua** donde se agrupan las features en construcción.
+- Contiene trabajo en progreso, datos simulados y features pendientes de finalizar.
+- Punto de referencia para ver el estado actual del desarrollo.
+- Cambios se agrupan en commits temáticos antes de proponer PR a `main`.
+
+### Flujo de trabajo
+
+```
+main (stable) ← ← ← ← develop (active development)
+                    ↑
+                  feature branches
+```
+
+1. Crea una rama de feature desde `develop`: `git checkout -b feature/nombre-feature`
+2. Realiza cambios y commits
+3. Cuando esté lista, integra a `develop` mediante PR
+4. Cuando una versión esté completa, crea PR de `develop` a `main`
+
 ## Desarrollo local
 
 Para iniciar la aplicación en el puerto `8002`:
@@ -107,12 +137,18 @@ composer test
 - [x] Autenticación base con Fortify y Breeze.
 - [x] Soporte de 2FA preparado.
 - [x] Migraciones iniciales de usuarios y 2FA.
-- [ ] Modelo de datos definitivo.
+- [x] Módulo 1.8: Validación de condición estudiantil (API + UI).
+- [x] Módulo 1.9: Consentimientos y preferencias de comunicación (API + UI).
+- [x] Identidad visual: Logo, colores institucionales, rediseño de pantallas.
+- [x] Endpoints API REST v1 documentados y funcionales.
+- [ ] Modelo de datos definitivo con persistencia en BD.
 - [ ] Perfil académico completo del estudiante.
 - [ ] Gestión de UID NFC.
 - [ ] Identidad QR dinámica.
 - [ ] Roles y permisos contextuales.
 - [ ] Servicios y contratos de integración con los demás equipos.
+- [ ] Autenticación OAuth 2.0 inter-equipos.
+- [ ] Publicación de eventos para cambios de estado/consentimientos.
 
 ## Repositorio
 
