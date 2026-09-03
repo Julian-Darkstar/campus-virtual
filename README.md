@@ -130,6 +130,26 @@ También puede utilizarse el script de Composer:
 composer test
 ```
 
+## Cambios Recientes
+
+### Versión 0.1.0-dev (28 de agosto de 2026)
+
+#### Características Implementadas
+- **Módulo 1.8**: Validación de condición estudiantil con estado, matrícula, programa y campus.
+- **Módulo 1.9**: Gestión de consentimientos y preferencias de comunicación (email, push, SMS).
+- **API REST v1**: Endpoints documentados bajo `/api/v1` con datos simulados:
+  - Estado académico: GET `/students/{studentId}/status`
+  - Historial: GET `/students/{studentId}/status/history`
+  - Consentimientos: GET/POST/DELETE `/students/{studentId}/consents`
+  - Preferencias: GET/PATCH `/students/{studentId}/preferences`
+- **Identidad Visual**: Logo SVG, paleta de colores institucionales, rediseño de interfaz pública y autenticada.
+- **Tipografía**: Fuente Manrope como identidad visual del proyecto.
+
+#### Interfaz de Usuario
+- Panel protegido en `/student-services` con módulos 1.8 y 1.9.
+- Dashboard actualizado con acceso directo a nuevos módulos.
+- Diseño responsivo con colores institucionales: azul marino (#00338D), gris pizarra (#64748B), verde validación (#10B981).
+
 ## Estado del proyecto
 
 - [x] Estructura inicial Laravel.
