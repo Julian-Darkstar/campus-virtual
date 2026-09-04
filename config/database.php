@@ -44,6 +44,19 @@ return [
             'transaction_mode' => 'DEFERRED',
         ],
 
+        'mongodb' => [
+            'driver' => 'mongodb',
+            'dsn' => env('MONGODB_DSN', 'mongodb://127.0.0.1:27017'),
+            'host' => env('DB_HOST', '127.0.0.1'),
+            'port' => env('DB_PORT', 27017),
+            'database' => env('DB_DATABASE', 'campus_virtual'),
+            'username' => env('DB_USERNAME'),
+            'password' => env('DB_PASSWORD'),
+            'options' => [
+                'database' => env('DB_DATABASE', 'campus_virtual'),
+            ],
+        ],
+
         'mysql' => [
             'driver' => 'mysql',
             'url' => env('DB_URL'),
