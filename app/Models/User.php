@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+// use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
@@ -14,43 +15,29 @@ use Laravel\Fortify\TwoFactorAuthenticatable;
 #[Hidden(['password', 'remember_token'])]
 class User extends Authenticatable
 {
+    protected $connection = 'mongodb';
     /** @use HasFactory<UserFactory> */
     use HasFactory, Notifiable, TwoFactorAuthenticatable;
 
-    protected $connection = 'mongodb';
-
-    /**
-     * Dispositivos del usuario.
-     */
     public function devices()
     {
         return $this->hasMany(Device::class, 'user_id');
     }
 
-    /**
-     * Tokens QR del usuario.
-     */
     public function qrTokens()
     {
         return $this->hasMany(QrToken::class, 'user_id');
     }
 
-    /**
-     * Sesiones del usuario.
-     */
     public function sessions()
     {
         return $this->hasMany(UserSession::class, 'user_id');
     }
 
-    /**
-     * Eventos de seguridad del usuario.
-     */
     public function securityEvents()
     {
         return $this->hasMany(SecurityEvent::class, 'user_id');
     }
-
     /**
      * Tarjetas NFC pertenecientes al usuario.
      */
@@ -75,11 +62,29 @@ class User extends Authenticatable
         return $this->hasMany(CredentialEvent::class, 'performed_by');
     }
 
+    /**
+     * Get the attributes that should be cast.
+     *
+     * @return array<string, string>
+     */
     protected function casts(): array
     {
         return [
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
+        ];
+    }
+
+    /**
+     * Forma minima que consumen otros dominios al validar un QR o
+     * una sesion (modulo 1.10 - contrato de identidad).
+     */
+    public function displayIdentity(): array
+    {
+        return [
+            'id' => (string) $this->_id,
+            'name' => $this->name,
+            'email' => $this->email,
         ];
     }
 }
