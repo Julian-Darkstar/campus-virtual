@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Auth\AuthController;
+use App\Http\Controllers\NfcCardController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\QrController;
 use App\Http\Controllers\SecurityDeviceController;
@@ -23,37 +24,86 @@ Route::get('/dashboard', function () {
 })->middleware(['auth', 'verified'])->name('dashboard');
 
 Route::middleware('auth')->group(function () {
+
+    // --------------------------------------------------------------
+    // Servicios del estudiante
+    // --------------------------------------------------------------
     Route::get('/student-services', [StudentServicesController::class, 'index'])
         ->name('student-services.index');
 
-    Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');
-    Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');
-    Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
+    // --------------------------------------------------------------
+    // Perfil
+    // --------------------------------------------------------------
+    Route::get('/profile', [ProfileController::class, 'edit'])
+        ->name('profile.edit');
+
+    Route::patch('/profile', [ProfileController::class, 'update'])
+        ->name('profile.update');
+
+    Route::delete('/profile', [ProfileController::class, 'destroy'])
+        ->name('profile.destroy');
 
     // --------------------------------------------------------------
     // Modulo 1.6 - Identidad QR
     // --------------------------------------------------------------
     Route::prefix('identidad/qr')->name('identity.qr.')->group(function () {
-        Route::get('/', [QrController::class, 'index'])->name('index');
-        Route::post('/generar', [QrController::class, 'generate'])->name('generate');
-        Route::get('/historial', [QrController::class, 'history'])->name('history');
-        Route::post('/simular-validacion', [QrController::class, 'simulateValidation'])->name('simulate');
+        Route::get('/', [QrController::class, 'index'])
+            ->name('index');
+
+        Route::post('/generar', [QrController::class, 'generate'])
+            ->name('generate');
+
+        Route::get('/historial', [QrController::class, 'history'])
+            ->name('history');
+
+        Route::post('/simular-validacion', [QrController::class, 'simulateValidation'])
+            ->name('simulate');
     });
 
     // --------------------------------------------------------------
     // Modulo 1.7 - Dispositivos y sesiones confiables
     // --------------------------------------------------------------
     Route::prefix('seguridad')->name('security.')->group(function () {
-        Route::get('/dispositivos', [SecurityDeviceController::class, 'index'])->name('devices.index');
 
-        Route::post('/reautenticar', [AuthController::class, 'reauthenticate'])->name('reauth');
+        Route::get('/dispositivos', [SecurityDeviceController::class, 'index'])
+            ->name('devices.index');
+
+        Route::post('/reautenticar', [AuthController::class, 'reauthenticate'])
+            ->name('reauth');
 
         Route::middleware('reauth')->group(function () {
-            Route::post('/sesiones/{session}/revocar', [SecurityDeviceController::class, 'revoke'])->name('sessions.revoke');
-            Route::post('/sesiones/revocar-otras', [SecurityDeviceController::class, 'revokeOthers'])->name('sessions.revoke-others');
-            Route::post('/dispositivos/{device}/confianza', [SecurityDeviceController::class, 'trust'])->name('devices.trust');
+
+            Route::post('/sesiones/{session}/revocar', [SecurityDeviceController::class, 'revoke'])
+                ->name('sessions.revoke');
+
+            Route::post('/sesiones/revocar-otras', [SecurityDeviceController::class, 'revokeOthers'])
+                ->name('sessions.revoke-others');
+
+            Route::post('/dispositivos/{device}/confianza', [SecurityDeviceController::class, 'trust'])
+                ->name('devices.trust');
         });
     });
+
+    // --------------------------------------------------------------
+    // Modulo 1.4 - Registro de tarjetas NFC
+    // --------------------------------------------------------------
+    Route::get('/nfc-cards', [NfcCardController::class, 'index'])
+        ->name('nfc-cards.index');
+
+    Route::get('/nfc-cards/create', [NfcCardController::class, 'create'])
+        ->name('nfc-cards.create');
+
+    Route::post('/nfc-cards', [NfcCardController::class, 'store'])
+        ->name('nfc-cards.store');
+
+    // --------------------------------------------------------------
+    // Modulo 1.5 - Ciclo de vida de credenciales NFC
+    // --------------------------------------------------------------
+    Route::patch('/nfc-cards/{nfcCard}/status', [NfcCardController::class, 'updateStatus'])
+        ->name('nfc-cards.update-status');
+
+    Route::get('/nfc-cards/{nfcCard}/history', [NfcCardController::class, 'history'])
+        ->name('nfc-cards.history');
 });
 
 require __DIR__.'/auth.php';
