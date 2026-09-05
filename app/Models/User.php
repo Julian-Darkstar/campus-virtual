@@ -38,6 +38,29 @@ class User extends Authenticatable
     {
         return $this->hasMany(SecurityEvent::class, 'user_id');
     }
+    /**
+     * Tarjetas NFC pertenecientes al usuario.
+     */
+    public function nfcCards()
+    {
+        return $this->hasMany(NfcCard::class, 'user_id');
+    }
+
+    /**
+     * Tarjetas NFC registradas por el usuario.
+     */
+    public function registeredNfcCards()
+    {
+        return $this->hasMany(NfcCard::class, 'registered_by');
+    }
+
+    /**
+     * Eventos del historial de credenciales realizados por el usuario.
+     */
+    public function credentialEvents()
+    {
+        return $this->hasMany(CredentialEvent::class, 'performed_by');
+    }
 
     /**
      * Get the attributes that should be cast.
