@@ -19,6 +19,11 @@
         "vite": "^8.0.0",
         "vue": "^3.4.0"
     },
+    "dependencies": {
+        "@zxing/library": "^0.21.3",
+        "axios": "^1.6.2",
+        "qrcode": "^1.5.3"
+    },
     "optionalDependencies": {
         "@laravel/multiplex": "^0.4.1"
     }

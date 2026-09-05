@@ -17,6 +17,8 @@ El alcance inicial contempla:
 - Registro y ciclo de vida de tarjetas NFC mediante UID simulado.
 - Identidad QR y códigos temporales para validaciones.
 - Dispositivos, sesiones confiables y alertas de acceso.
+- Gestión y vinculación de dispositivos del usuario.
+- Generación, escaneo y validación de códigos QR dinámicos para autenticación y asistencia.
 - Validación de la condición estudiantil.
 - Consentimientos y preferencias de comunicación.
 - Servicios internos de identidad y credenciales para los demás equipos.
@@ -29,6 +31,7 @@ El alcance inicial contempla:
 - **Estilos:** Tailwind CSS.
 - **Pruebas:** Pest.
 - **Persistencia:** MongoDB 7 para desarrollo local mediante Podman.
+- **QR en frontend:** `qrcode` para renderizado y `@zxing/library` para escaneo con cámara.
 
 La aplicación usa el paquete `mongodb/laravel-mongodb` y el modelo de usuario compatible con MongoDB. Laravel Fortify continúa siendo responsable de la autenticación; los módulos 1.8 y 1.9 solo consumen la identidad autenticada.
 
@@ -57,11 +60,24 @@ composer install
 npm install
 ```
 
+Las dependencias del módulo QR se incluyen en `package.json`: `qrcode` genera los códigos en el navegador y
+`@zxing/library` lee códigos mediante la cámara. El backend reutiliza `mongodb/laravel-mongodb`; no es necesario
+añadir otro paquete de Composer para generar imágenes porque el QR se renderiza en Vue.
+
 Crea el archivo de entorno y genera la clave de la aplicación:
 
 ```bash
 cp .env.example .env
 php artisan key:generate
+php artisan migrate
+```
+
+Si el proyecto ya estaba instalado, actualiza ambas dependencias antes de migrar:
+
+```bash
+composer install
+npm install
+php artisan migrate
 ```
 
 Configura MongoDB en el archivo `.env`:
@@ -149,6 +165,18 @@ En otra terminal, ejecuta Vite para recompilar los recursos durante el desarroll
 ```bash
 npm run dev
 ```
+
+## Módulos QR y dispositivos
+
+Con una sesión autenticada están disponibles:
+
+- `/security/qr`: genera un QR dinámico de un solo uso y permite escanear/validar otro QR con la cámara.
+- `/security/devices`: vincula, consulta y desvincula dispositivos del usuario.
+- `POST /api/v1/identity/qr/generate`: genera un token QR para clientes API autenticados con Sanctum.
+- `POST /api/v1/identity/qr-validate`: valida un token, registra el resultado y consume los tokens dinámicos.
+
+Las migraciones crean las colecciones MongoDB `devices`, `qr_tokens` y `qr_validations`, con índices para usuario,
+token y expiración. La cámara requiere permisos del navegador y, en producción, un contexto HTTPS.
 
 Para generar los recursos frontend de producción:
 

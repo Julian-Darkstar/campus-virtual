@@ -18,6 +18,16 @@ class User extends Authenticatable
     /** @use HasFactory<UserFactory> */
     use HasFactory, Notifiable, TwoFactorAuthenticatable;
 
+    public function devices()
+    {
+        return $this->hasMany(Device::class, 'user_id');
+    }
+
+    public function qrTokens()
+    {
+        return $this->hasMany(QrToken::class, 'user_id');
+    }
+
     /**
      * Get the attributes that should be cast.
      *
