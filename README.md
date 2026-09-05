@@ -28,9 +28,9 @@ El alcance inicial contempla:
 - **Autenticación:** Laravel Fortify y Breeze.
 - **Estilos:** Tailwind CSS.
 - **Pruebas:** Pest.
-- **Persistencia:** pendiente de definición entre PostgreSQL, SQL Server o MongoDB.
+- **Persistencia:** MongoDB 7 para desarrollo local mediante Podman.
 
-La base de datos definitiva aún no está configurada. El proyecto conserva una configuración local provisional para permitir el desarrollo del scaffolding y la autenticación.
+La aplicación usa el paquete `mongodb/laravel-mongodb` y el modelo de usuario compatible con MongoDB. Laravel Fortify continúa siendo responsable de la autenticación; los módulos 1.8 y 1.9 solo consumen la identidad autenticada.
 
 ## Requisitos
 
@@ -38,6 +38,8 @@ La base de datos definitiva aún no está configurada. El proyecto conserva una 
 - Composer.
 - Node.js y npm.
 - Git.
+- Podman 5 o superior.
+- Extensión PHP `mongodb`.
 
 ## Instalación
 
@@ -62,7 +64,45 @@ cp .env.example .env
 php artisan key:generate
 ```
 
-Cuando se defina el motor de base de datos, actualiza las variables `DB_*` del archivo `.env` y ejecuta las migraciones correspondientes.
+Configura MongoDB en el archivo `.env`:
+
+```env
+DB_CONNECTION=mongodb
+DB_HOST=127.0.0.1
+DB_PORT=27017
+DB_DATABASE=campus_virtual
+DB_USERNAME=
+DB_PASSWORD=
+```
+
+## MongoDB local con Podman
+
+Descarga y ejecuta MongoDB 7 con un volumen persistente:
+
+```bash
+podman pull docker.io/library/mongo:7
+podman run -d --name campus-mongo \
+  -p 27017:27017 \
+  -v mongo_data:/data/db \
+  docker.io/library/mongo:7
+podman update --restart=unless-stopped campus-mongo
+```
+
+Si el contenedor ya existe, solo inícialo:
+
+```bash
+podman start campus-mongo
+```
+
+Comprueba MongoDB y Laravel:
+
+```bash
+podman exec campus-mongo mongosh --quiet --eval "db.runCommand({ ping: 1 })"
+php artisan config:clear
+php artisan tinker --execute="DB::connection('mongodb')->command(['ping' => 1]); echo 'MONGO_OK';"
+```
+
+La instalación local de desarrollo no habilita autenticación en MongoDB. Para DataGrip utiliza `localhost`, puerto `27017`, autenticación `No authentication` y la base `campus_virtual`. En MongoDB, las tablas se representan como colecciones; la aplicación crea `users` y `sessions` cuando existen documentos.
 
 ## Ramas de desarrollo
 
