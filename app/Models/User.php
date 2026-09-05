@@ -15,6 +15,7 @@ use Laravel\Fortify\TwoFactorAuthenticatable;
 #[Hidden(['password', 'remember_token'])]
 class User extends Authenticatable
 {
+    protected $connection = 'mongodb';
     /** @use HasFactory<UserFactory> */
     use HasFactory, Notifiable, TwoFactorAuthenticatable;
 
