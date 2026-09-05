@@ -28,6 +28,16 @@ class User extends Authenticatable
         return $this->hasMany(QrToken::class, 'user_id');
     }
 
+    public function sessions()
+    {
+        return $this->hasMany(UserSession::class, 'user_id');
+    }
+
+    public function securityEvents()
+    {
+        return $this->hasMany(SecurityEvent::class, 'user_id');
+    }
+
     /**
      * Get the attributes that should be cast.
      *
@@ -38,6 +48,19 @@ class User extends Authenticatable
         return [
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
+        ];
+    }
+
+    /**
+     * Forma minima que consumen otros dominios al validar un QR o
+     * una sesion (modulo 1.10 - contrato de identidad).
+     */
+    public function displayIdentity(): array
+    {
+        return [
+            'id' => (string) $this->_id,
+            'name' => $this->name,
+            'email' => $this->email,
         ];
     }
 }

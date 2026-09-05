@@ -43,12 +43,6 @@ const showingNavigationDropdown = ref(false);
                                 >
                                     Mi condición
                                 </NavLink>
-                                <NavLink :href="route('security.qr')" :active="route().current('security.qr')">
-                                    Código QR
-                                </NavLink>
-                                <NavLink :href="route('security.devices')" :active="route().current('security.devices')">
-                                    Dispositivos
-                                </NavLink>
                             </div>
                         </div>
 
@@ -161,12 +155,6 @@ const showingNavigationDropdown = ref(false);
                             :active="route().current('student-services.index')"
                         >
                             Mi condición
-                        </ResponsiveNavLink>
-                        <ResponsiveNavLink :href="route('security.qr')" :active="route().current('security.qr')">
-                            Código QR
-                        </ResponsiveNavLink>
-                        <ResponsiveNavLink :href="route('security.devices')" :active="route().current('security.devices')">
-                            Dispositivos
                         </ResponsiveNavLink>
                     </div>
 

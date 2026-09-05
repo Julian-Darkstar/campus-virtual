@@ -16,9 +16,20 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->web(append: [
             \App\Http\Middleware\HandleInertiaRequests::class,
             \Illuminate\Http\Middleware\AddLinkHeadersForPreloadedAssets::class,
+
+            // Modulo 1.7: registra dispositivo/sesion en cada request
+            // autenticado y fuerza logout si esa sesion fue revocada
+            // remotamente desde otro dispositivo.
+            \App\Http\Middleware\TrackDeviceSession::class,
+            \App\Http\Middleware\EnsureSessionIsActive::class,
         ]);
 
-        //
+        $middleware->alias([
+            // Modulo 1.7: exige una confirmacion de contraseña reciente
+            // antes de ejecutar una accion sensible (revocar sesion,
+            // quitarle confianza a un dispositivo, etc.).
+            'reauth' => \App\Http\Middleware\EnsureRecentlyReauthenticated::class,
+        ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->shouldRenderJsonWhen(

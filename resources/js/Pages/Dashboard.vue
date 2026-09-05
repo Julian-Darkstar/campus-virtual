@@ -34,6 +34,18 @@ import { Head } from '@inertiajs/vue3';
                         <p class="mt-2 text-sm leading-6 text-slate-500">Administra tus consentimientos y canales de comunicación.</p>
                         <span class="mt-6 inline-block text-sm font-bold text-[#00338D] group-hover:text-[#10B981]">Gestionar preferencias →</span>
                     </a>
+                    <a :href="route('identity.qr.index')" class="group rounded-2xl border border-slate-200 bg-white p-6 shadow-sm transition hover:-translate-y-1 hover:border-[#00338D]">
+                        <span class="text-xs font-bold uppercase tracking-[0.18em] text-[#00338D]">Módulo 1.6</span>
+                        <h2 class="mt-3 text-xl font-bold text-[#00338D]">Identidad QR</h2>
+                        <p class="mt-2 text-sm leading-6 text-slate-500">Tu QR de identificación y tu código dinámico para validar operaciones sensibles.</p>
+                        <span class="mt-6 inline-block text-sm font-bold text-[#00338D] group-hover:text-[#0284C7]">Ver mi QR →</span>
+                    </a>
+                    <a :href="route('security.devices.index')" class="group rounded-2xl border border-slate-200 bg-white p-6 shadow-sm transition hover:-translate-y-1 hover:border-[#0284C7]">
+                        <span class="text-xs font-bold uppercase tracking-[0.18em] text-[#0284C7]">Módulo 1.7</span>
+                        <h2 class="mt-3 text-xl font-bold text-[#00338D]">Dispositivos y sesiones</h2>
+                        <p class="mt-2 text-sm leading-6 text-slate-500">Revisa desde dónde ha ingresado tu cuenta y cierra sesiones remotas.</p>
+                        <span class="mt-6 inline-block text-sm font-bold text-[#00338D] group-hover:text-[#0284C7]">Administrar accesos →</span>
+                    </a>
                 </div>
             </div>
         </div>
