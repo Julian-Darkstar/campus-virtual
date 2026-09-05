@@ -2,33 +2,58 @@
 
 namespace App\Models;
 
-// use Illuminate\Contracts\Auth\MustVerifyEmail;
-use Database\Factories\UserFactory;
-use Illuminate\Database\Eloquent\Attributes\Fillable;
-use Illuminate\Database\Eloquent\Attributes\Hidden;
-use Illuminate\Database\Eloquent\Factories\HasFactory;
 use MongoDB\Laravel\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Fortify\TwoFactorAuthenticatable;
 
-#[Fillable(['name', 'email', 'password'])]
-#[Hidden(['password', 'remember_token'])]
 class User extends Authenticatable
 {
-    /** @use HasFactory<UserFactory> */
-    use HasFactory, Notifiable, TwoFactorAuthenticatable;
+    use Notifiable, TwoFactorAuthenticatable;
+
+    protected $connection = 'mongodb';
+    protected $collection = 'users';
+
+    protected $fillable = [
+        'name',
+        'email',
+        'password',
+        'roles',
+        'two_factor_secret',
+        'two_factor_recovery_codes',
+        'two_factor_confirmed_at',
+    ];
+
+    protected $hidden = [
+        'password',
+        'remember_token',
+        'two_factor_recovery_codes',
+        'two_factor_secret',
+    ];
+
+    protected $appends = [
+        'two_factor_enabled',
+    ];
+
+public function getTwoFactorEnabledAttribute(): bool
+{
+    return ! empty($this->two_factor_secret);
+}
+
+    protected function casts(): array
+    {
+        return [
+            'email_verified_at' => 'datetime',
+            'password' => 'hashed',
+            'roles' => 'array',
+        ];
+    }
 
     public function devices()
     {
         return $this->hasMany(Device::class, 'user_id');
     }
 
-    public function qrTokens()
-    {
-        return $this->hasMany(QrToken::class, 'user_id');
-    }
-
-    public function sessions()
+    public function userSessions()
     {
         return $this->hasMany(UserSession::class, 'user_id');
     }
@@ -38,29 +63,49 @@ class User extends Authenticatable
         return $this->hasMany(SecurityEvent::class, 'user_id');
     }
 
-    /**
-     * Get the attributes that should be cast.
-     *
-     * @return array<string, string>
-     */
-    protected function casts(): array
+    public function assignRole(string $roleName, ?string $scopeType = null, ?string $scopeId = null): void
     {
-        return [
-            'email_verified_at' => 'datetime',
-            'password' => 'hashed',
+        $roles = $this->roles ?? [];
+
+        foreach ($roles as $role) {
+            if (
+                ($role['name'] ?? null) === $roleName &&
+                ($role['scope_type'] ?? null) === $scopeType &&
+                ($role['scope_id'] ?? null) === $scopeId
+            ) {
+                return;
+            }
+        }
+
+        $roles[] = [
+            'name' => $roleName,
+            'scope_type' => $scopeType,
+            'scope_id' => $scopeId,
+            'assigned_at' => now()->toDateTimeString(),
         ];
+
+        $this->roles = $roles;
+        $this->save();
     }
 
-    /**
-     * Forma minima que consumen otros dominios al validar un QR o
-     * una sesion (modulo 1.10 - contrato de identidad).
-     */
-    public function displayIdentity(): array
+    public function hasRole(string $roleName, ?string $scopeType = null, ?string $scopeId = null): bool
     {
-        return [
-            'id' => (string) $this->_id,
-            'name' => $this->name,
-            'email' => $this->email,
-        ];
+        $roles = $this->roles ?? [];
+
+        foreach ($roles as $role) {
+            if (($role['name'] ?? null) === $roleName) {
+                if (is_null($scopeType) && is_null($role['scope_type'] ?? null)) {
+                    return true;
+                }
+                if (
+                    ($role['scope_type'] ?? null) === $scopeType &&
+                    ($role['scope_id'] ?? null) === $scopeId
+                ) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 }
