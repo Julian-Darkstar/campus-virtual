@@ -1,6 +1,5 @@
 <?php
 
-<<<<<<< HEAD
 use App\Http\Controllers\Auth\AuthController;
 use App\Http\Controllers\NfcCardController;
 use App\Http\Controllers\ProfileController;
