@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Events\CredentialChanged;
 use App\Models\NfcCard;
 use App\Models\User;
 use Illuminate\Http\Request;
@@ -71,6 +72,8 @@ class NfcCardController extends Controller
             'new_status' => 'active',
         ]);
 
+        CredentialChanged::dispatch((string) $card->getKey(), 'nfc', 'registered', 'active', (string) auth()->id());
+
         return redirect()
             ->route('nfc-cards.index')
             ->with('success', 'Tarjeta NFC registrada correctamente.');
@@ -137,6 +140,14 @@ class NfcCardController extends Controller
             'previous_status' => $previousStatus,
             'new_status' => $newStatus,
         ]);
+
+        CredentialChanged::dispatch(
+            (string) $nfcCard->getKey(),
+            'nfc',
+            'status_changed',
+            $newStatus,
+            (string) auth()->id(),
+        );
 
         return redirect()
             ->route('nfc-cards.index')

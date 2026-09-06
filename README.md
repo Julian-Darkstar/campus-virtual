@@ -198,6 +198,34 @@ También puede utilizarse el script de Composer:
 composer test
 ```
 
+Las pruebas usan la base MongoDB `campus_virtual_testing` y requieren el contenedor `campus-mongo` activo. El harness limpia esa base antes de cada prueba.
+
+## OAuth 2.0 entre servicios
+
+Los microservicios consumen la API interna mediante el grant estándar `client_credentials`. Esto es independiente del login web de Fortify.
+
+Genera un cliente una sola vez y guarda el secreto fuera del repositorio:
+
+```bash
+php artisan oauth:client equipo-servicios --scope=students:read
+```
+
+Solicita un token:
+
+```bash
+curl -X POST http://127.0.0.1:8002/api/oauth/token \
+  -d grant_type=client_credentials \
+  -d client_id=svc_xxx \
+  -d client_secret=xxx \
+  -d scope=students:read
+```
+
+Usa el token como `Authorization: Bearer <access_token>` para las rutas `/api/v1`. Los tokens son JWT firmados, tienen issuer/audience, expiración y scopes. En producción define `OAUTH2_SIGNING_KEY` independiente de `APP_KEY` y rota los clientes periódicamente.
+
+Los cambios de dominio implementan un contrato de eventos versionado (`*.v1`) y se guardan en la colección MongoDB `event_outbox` para que un publicador externo pueda entregarlos a otros servicios sin acoplarlos a las colecciones internas.
+
+El publicador incluido se ejecuta con `php artisan events:publish`. Configura `EVENTS_SINK_URL` y, si el receptor lo requiere, `EVENTS_SINK_TOKEN`. Los eventos publicados reciben `published_at`; los fallidos conservan `attempts` y `last_error` para reintentos. En producción se recomienda ejecutarlo mediante scheduler o worker.
+
 ## Cambios Recientes
 
 ### Versión 0.1.0-dev (28 de agosto de 2026)
@@ -223,20 +251,28 @@ composer test
 - [x] Estructura inicial Laravel.
 - [x] Vue 3 + Inertia.js + Vite.
 - [x] Autenticación base con Fortify y Breeze.
-- [x] Soporte de 2FA preparado.
+- [x] Módulo 1.1: perfiles académicos, catálogos, historial, CRUD e importación CSV adaptados a MongoDB.
+- [x] Módulo 1.2: 2FA con Fortify.
+- [x] Módulo 1.3: RBAC contextual.
+- [x] Módulos 1.4 y 1.5: registro y ciclo de vida de credenciales NFC.
+- [x] Módulos 1.6 y 1.7: identidad QR, dispositivos y sesiones confiables.
 - [x] Migraciones iniciales de usuarios y 2FA.
 - [x] Módulo 1.8: Validación de condición estudiantil (API + UI).
 - [x] Módulo 1.9: Consentimientos y preferencias de comunicación (API + UI).
 - [x] Identidad visual: Logo, colores institucionales, rediseño de pantallas.
 - [x] Endpoints API REST v1 documentados y funcionales.
-- [ ] Modelo de datos definitivo con persistencia en BD.
-- [ ] Perfil académico completo del estudiante.
-- [ ] Gestión de UID NFC.
-- [ ] Identidad QR dinámica.
-- [ ] Roles y permisos contextuales.
+- [ ] Pruebas automatizadas completas contra MongoDB para todos los módulos.
+- [ ] Integración de autenticación inter-servicios OAuth 2.0.
 - [ ] Servicios y contratos de integración con los demás equipos.
-- [ ] Autenticación OAuth 2.0 inter-equipos.
 - [ ] Publicación de eventos para cambios de estado/consentimientos.
+
+### Notas de integración
+
+- El módulo 1.1 se portó desde la rama SQL Server a documentos MongoDB (`campuses`, `academic_programs`, `student_profiles` y `academic_status_history`).
+- La interfaz administrativa está disponible en `/students`; requiere un usuario con rol `admin` o `student_manager`.
+- Los catálogos e índices de 1.1 se inicializan con `php artisan db:seed --class=StudentCatalogSeeder`.
+- La importación CSV valida todas las filas antes de escribir. El contenedor local MongoDB usa el replica set `rs0`, habilitando transacciones multi-documento para atomicidad estricta.
+- Los módulos 1.8 y 1.9 aún usan datos simulados y deben conectarse a `StudentProfile` y sus eventos cuando se cierre el contrato de dominio.
 
 ## Repositorio
 

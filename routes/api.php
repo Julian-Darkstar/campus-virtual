@@ -1,9 +1,12 @@
 <?php
 
 use App\Http\Controllers\StudentServicesController;
+use App\Http\Controllers\OAuthTokenController;
 use Illuminate\Support\Facades\Route;
 
-Route::prefix('v1')->group(function () {
+Route::post('/oauth/token', OAuthTokenController::class)->middleware('throttle:60,1');
+
+Route::prefix('v1')->middleware('oauth.service')->group(function () {
     Route::get('/students/{studentId}/status', [StudentServicesController::class, 'status']);
     Route::get('/students/{studentId}/status/history', [StudentServicesController::class, 'statusHistory']);
     Route::get('/students/{studentId}/consents', [StudentServicesController::class, 'consents']);

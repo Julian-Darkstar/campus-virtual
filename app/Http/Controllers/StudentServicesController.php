@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Events\StudentConsentChanged;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -55,6 +56,14 @@ class StudentServicesController extends Controller
             'consent_version' => ['required', 'string'],
         ]);
 
+        StudentConsentChanged::dispatch(
+            $studentId,
+            $validated['consent_id'],
+            'accepted',
+            $validated['consent_version'],
+            $request->user()?->getKey() ? (string) $request->user()->getKey() : null,
+        );
+
         return $this->success([
             'student_id' => $studentId,
             'consent_id' => $validated['consent_id'],
@@ -66,6 +75,8 @@ class StudentServicesController extends Controller
 
     public function revokeConsent(string $studentId, string $consentId): JsonResponse
     {
+        StudentConsentChanged::dispatch($studentId, $consentId, 'revoked', 'current');
+
         return $this->success([
             'student_id' => $studentId,
             'consent_id' => $consentId,

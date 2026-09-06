@@ -30,6 +30,9 @@ const showingNavigationDropdown = ref(false);
                                 <NavLink :href="route('student-services.index')" :active="route().current('student-services.index')">
                                     Mi condición
                                 </NavLink>
+                                <NavLink :href="route('students.index')" :active="route().current('students.*')">
+                                    Estudiantes
+                                </NavLink>
                                 <NavLink :href="route('roles.index')" :active="route().current('roles.index')">
                                     Roles y Seguridad
                                 </NavLink>
@@ -87,6 +90,9 @@ const showingNavigationDropdown = ref(false);
                         </ResponsiveNavLink>
                         <ResponsiveNavLink :href="route('student-services.index')" :active="route().current('student-services.index')">
                             Mi condición
+                        </ResponsiveNavLink>
+                        <ResponsiveNavLink :href="route('students.index')" :active="route().current('students.*')">
+                            Estudiantes
                         </ResponsiveNavLink>
                         <ResponsiveNavLink :href="route('roles.index')" :active="route().current('roles.index')">
                             Roles y Seguridad

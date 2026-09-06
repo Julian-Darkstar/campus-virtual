@@ -22,6 +22,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'session.active' => \App\Http\Middleware\EnsureSessionIsActive::class,
             'device.track' => \App\Http\Middleware\TrackDeviceSession::class,
             'role.context' => \App\Http\Middleware\EnsureHasContextualRole::class,
+            'oauth.service' => \App\Http\Middleware\ValidateServiceToken::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions) {

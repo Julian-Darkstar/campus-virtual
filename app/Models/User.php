@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Database\Factories\UserFactory;
+use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use MongoDB\Laravel\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
@@ -21,6 +22,7 @@ class User extends Authenticatable
         'name',
         'email',
         'password',
+        'account_activation_pending',
         'roles',
         'two_factor_secret',
         'two_factor_recovery_codes',
@@ -48,8 +50,21 @@ class User extends Authenticatable
         return [
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
-            'roles' => 'array',
+            'account_activation_pending' => 'boolean',
         ];
+    }
+
+    protected function roles(): Attribute
+    {
+        return Attribute::make(
+            get: fn ($value) => is_string($value) ? (json_decode($value, true) ?: []) : ($value ?: []),
+            set: fn ($value) => is_string($value) ? json_decode($value, true) : ($value ?: []),
+        );
+    }
+
+    public function studentProfile()
+    {
+        return $this->hasOne(StudentProfile::class, 'user_id');
     }
 
     public function devices()

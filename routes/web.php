@@ -7,6 +7,8 @@ use App\Http\Controllers\QrController;
 use App\Http\Controllers\RoleController;
 use App\Http\Controllers\SecurityDeviceController;
 use App\Http\Controllers\StudentServicesController;
+use App\Http\Controllers\StudentController;
+use App\Http\Controllers\StudentImportController;
 use Illuminate\Foundation\Application;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
@@ -27,6 +29,13 @@ Route::middleware(['auth', 'verified', 'session.active', 'device.track'])->group
 
     Route::get('/student-services', [StudentServicesController::class, 'index'])
         ->name('student-services.index');
+
+    Route::get('/students', [StudentController::class, 'index'])->name('students.index');
+    Route::get('/students/create', [StudentController::class, 'create'])->name('students.create');
+    Route::post('/students', [StudentController::class, 'store'])->name('students.store');
+    Route::post('/students/import', [StudentImportController::class, 'store'])->name('students.import');
+    Route::get('/students/{student}/edit', [StudentController::class, 'edit'])->name('students.edit');
+    Route::patch('/students/{student}', [StudentController::class, 'update'])->name('students.update');
 
     // --------------------------------------------------------------
     // Perfil
