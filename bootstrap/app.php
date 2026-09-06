@@ -3,7 +3,6 @@
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
-use Illuminate\Http\Request;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -12,27 +11,19 @@ return Application::configure(basePath: dirname(__DIR__))
         commands: __DIR__.'/../routes/console.php',
         health: '/up',
     )
-    ->withMiddleware(function (Middleware $middleware): void {
+    ->withMiddleware(function (Middleware $middleware) {
         $middleware->web(append: [
             \App\Http\Middleware\HandleInertiaRequests::class,
             \Illuminate\Http\Middleware\AddLinkHeadersForPreloadedAssets::class,
-
-            // Modulo 1.7: registra dispositivo/sesion en cada request
-            // autenticado y fuerza logout si esa sesion fue revocada
-            // remotamente desde otro dispositivo.
-            \App\Http\Middleware\TrackDeviceSession::class,
-            \App\Http\Middleware\EnsureSessionIsActive::class,
         ]);
 
+        // Registrar los alias de los middlewares
         $middleware->alias([
-            // Modulo 1.7: exige una confirmacion de contraseña reciente
-            // antes de ejecutar una accion sensible (revocar sesion,
-            // quitarle confianza a un dispositivo, etc.).
-            'reauth' => \App\Http\Middleware\EnsureRecentlyReauthenticated::class,
+            'session.active' => \App\Http\Middleware\EnsureSessionIsActive::class,
+            'device.track' => \App\Http\Middleware\TrackDeviceSession::class,
+            'role.context' => \App\Http\Middleware\EnsureHasContextualRole::class,
         ]);
     })
-    ->withExceptions(function (Exceptions $exceptions): void {
-        $exceptions->shouldRenderJsonWhen(
-            fn (Request $request) => $request->is('api/*') || $request->expectsJson(),
-        );
+    ->withExceptions(function (Exceptions $exceptions) {
+        //
     })->create();

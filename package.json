@@ -22,7 +22,7 @@
     "dependencies": {
         "@zxing/library": "^0.21.3",
         "axios": "^1.6.2",
-        "qrcode": "^1.5.3"
+        "qrcode": "^1.5.4"
     },
     "optionalDependencies": {
         "@laravel/multiplex": "^0.4.1"
