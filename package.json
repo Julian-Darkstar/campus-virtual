@@ -1,0 +1,23 @@
+{
+    "name": "campus-digital-modulo-1-1",
+    "private": true,
+    "type": "module",
+    "scripts": {
+        "build": "vite build",
+        "dev": "vite",
+        "type-check": "vue-tsc --noEmit"
+    },
+    "devDependencies": {
+        "@inertiajs/vue3": "^2.0.0",
+        "@types/node": "^22.10.0",
+        "@vitejs/plugin-vue": "^6.0.0",
+        "axios": "^1.8.0",
+        "concurrently": "^9.1.2",
+        "laravel-vite-plugin": "^2.0.0",
+        "@lucide/vue": "^1.39.0",
+        "typescript": "^5.7.2",
+        "vite": "^7.0.0",
+        "vue": "^3.5.13",
+        "vue-tsc": "^3.0.0"
+    }
+}

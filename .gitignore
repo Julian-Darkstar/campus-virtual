@@ -1,0 +1,14 @@
+/vendor/
+/node_modules/
+/public/build/
+/public/hot
+/public/storage
+/.env
+/.phpunit.result.cache
+/storage/*.key
+/storage/logs/*.log
+/storage/framework/cache/data/*
+/storage/framework/sessions/*
+/storage/framework/views/*
+!.gitignore
+
