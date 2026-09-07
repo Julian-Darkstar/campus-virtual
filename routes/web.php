@@ -120,10 +120,10 @@ Route::middleware(['auth', 'verified', 'session.active', 'device.track'])->group
     Route::delete('/security/devices/{device}', [SecurityDeviceController::class, 'destroy'])->name('security.devices.destroy');
     Route::post('/security/devices/logout-others', [SecurityDeviceController::class, 'logoutOthers'])->name('security.devices.logout-others');
 
-    Route::get('/identity/qr', [QrController::class, 'showIdentityQr'])->name('identity.qr');
-    Route::get('/identity/qr/view', [QrController::class, 'showIdentityQr'])->name('identity.qr.index');
-    Route::post('/identity/qr/refresh', [QrController::class, 'refreshQr'])->name('identity.qr.refresh');
-    Route::post('/identity/qr/validate', [QrController::class, 'validateQr'])->name('identity.qr.validate');
+    Route::get('/identity/qr', [QrController::class, 'index'])->name('identity.qr');
+    Route::get('/identity/qr/view', [QrController::class, 'index'])->name('identity.qr.view');
+    Route::post('/identity/qr/refresh', [QrController::class, 'generate'])->name('identity.qr.refresh');
+    Route::post('/identity/qr/validate', [QrController::class, 'simulateValidation'])->name('identity.qr.validate');
 });
 
 require __DIR__.'/auth.php';
