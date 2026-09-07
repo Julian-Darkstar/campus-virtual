@@ -228,6 +228,23 @@ El publicador incluido se ejecuta con `php artisan events:publish`. Configura `E
 
 ## Cambios Recientes
 
+### Versión 0.2.0-dev (7 de septiembre de 2026)
+
+#### Entrega actual del módulo 1
+- **Módulo 1.1:** gestión académica en MongoDB con perfiles, catálogos, historial, CRUD e importación CSV.
+- **Módulo 1.2:** autenticación de dos factores integrada con Fortify.
+- **Módulo 1.3:** RBAC contextual con roles y scopes.
+- **Módulos 1.4 y 1.5:** registro y ciclo de vida de credenciales NFC.
+- **Módulos 1.6 y 1.7:** identidad QR, dispositivos, sesiones confiables y reautenticación.
+- **Módulos 1.8 y 1.9:** interfaz y contrato API disponibles; la persistencia de condición, consentimientos y preferencias continúa pendiente.
+- **Integración entre servicios:** OAuth 2.0 `client_credentials`, JWT, scopes y middleware Bearer.
+- **Eventos de dominio:** eventos versionados, outbox MongoDB idempotente y comando `events:publish` con reintentos.
+- **Calidad:** 29 pruebas correctas, 71 aserciones y build frontend exitoso.
+
+#### Documentación
+- La documentación formal del módulo 1 se encuentra en `/home/darkstar/IS/documentacion/terminada/modulo-1`.
+- Incluye SRS IEEE 830, plan de desarrollo, arquitectura/API, plan de calidad, seguimiento y cierre.
+
 ### Versión 0.1.0-dev (28 de agosto de 2026)
 
 #### Características Implementadas
@@ -261,10 +278,10 @@ El publicador incluido se ejecuta con `php artisan events:publish`. Configura `E
 - [x] Módulo 1.9: Consentimientos y preferencias de comunicación (API + UI).
 - [x] Identidad visual: Logo, colores institucionales, rediseño de pantallas.
 - [x] Endpoints API REST v1 documentados y funcionales.
-- [ ] Pruebas automatizadas completas contra MongoDB para todos los módulos.
-- [ ] Integración de autenticación inter-servicios OAuth 2.0.
+- [x] Pruebas automatizadas contra MongoDB: 29 pruebas correctas.
+- [x] Integración de autenticación inter-servicios OAuth 2.0.
 - [ ] Servicios y contratos de integración con los demás equipos.
-- [ ] Publicación de eventos para cambios de estado/consentimientos.
+- [x] Contratos de eventos versionados y outbox MongoDB.
 
 ### Notas de integración
 
@@ -273,6 +290,7 @@ El publicador incluido se ejecuta con `php artisan events:publish`. Configura `E
 - Los catálogos e índices de 1.1 se inicializan con `php artisan db:seed --class=StudentCatalogSeeder`.
 - La importación CSV valida todas las filas antes de escribir. El contenedor local MongoDB usa el replica set `rs0`, habilitando transacciones multi-documento para atomicidad estricta.
 - Los módulos 1.8 y 1.9 aún usan datos simulados y deben conectarse a `StudentProfile` y sus eventos cuando se cierre el contrato de dominio.
+- La rama de entrega del equipo es `modulo-1`; `develop` conserva la integración continua y `main` permanece estable.
 
 ## Repositorio
 
