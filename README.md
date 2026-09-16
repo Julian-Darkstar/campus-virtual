@@ -97,10 +97,7 @@ Descarga y ejecuta MongoDB 7 con un volumen persistente:
 
 ```bash
 podman pull docker.io/library/mongo:7
-podman run -d --name campus-mongo `
-  -p 27017:27017 `
-  -v mongo_data:/data/db `
-  docker.io/library/mongo:7
+podman run -d --name campus-mongo -p 27017:27017 -v mongo_data:/data/db docker.io/library/mongo:7
 podman update --restart=unless-stopped campus-mongo
 ```
 
