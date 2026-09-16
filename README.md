@@ -143,6 +143,24 @@ php artisan test --filter=GoogleAuthenticatorTwoFactorTest
 
 El QR de Google Authenticator es distinto de los QR de identidad del módulo 1.6: debe escanearse desde la aplicación autenticadora, no desde la cámara normal del teléfono.
 
+## Instalación verificada
+
+La instalación local fue validada con PHP 8.4, Composer 2.10, Node.js 22, npm 10 y la extensión PHP `mongodb`. Las dependencias de backend y frontend se instalan con:
+
+```bash
+composer install
+npm install
+```
+
+Después de crear `.env` y generar la clave, el frontend se compila con:
+
+```bash
+php artisan key:generate
+npm run build
+```
+
+La aplicación carga correctamente con Laravel 13 y la conexión configurada para MongoDB. Para ejecutar migraciones y pruebas es necesario iniciar antes Podman y el contenedor `campus-mongo`.
+
 ## Ramas de desarrollo
 
 Este proyecto utiliza un flujo de Git con dos ramas principales:
