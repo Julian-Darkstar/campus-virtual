@@ -97,7 +97,10 @@ Descarga y ejecuta MongoDB 7 con un volumen persistente:
 
 ```bash
 podman pull docker.io/library/mongo:7
-podman run -d --name campus-mongo -p 27017:27017 -v mongo_data:/data/db docker.io/library/mongo:7
+podman run -d --name campus-mongo \
+  -p 27017:27017 \
+  -v mongo_data:/data/db \
+  docker.io/library/mongo:7
 podman update --restart=unless-stopped campus-mongo
 ```
 
@@ -119,44 +122,28 @@ La instalación local de desarrollo no habilita autenticación en MongoDB. Para 
 
 ## Google Authenticator y autenticación 2FA
 
-La autenticación de dos factores utiliza TOTP estándar mediante Laravel Fortify y es compatible con Google Authenticator. No se requiere una API, cuenta de servicio ni SDK de Google.
+La autenticación de dos factores utiliza TOTP estándar mediante Laravel Fortify y es compatible con Google Authenticator. No requiere una API, cuenta de servicio ni SDK de Google.
 
 Desde **Perfil**, el usuario puede:
 
 - Activar 2FA confirmando su contraseña.
-- Escanear el código QR `otpauth://` desde Google Authenticator o introducir la clave manual.
+- Escanear el código QR `otpauth://` desde Google Authenticator o introducir la clave manualmente.
 - Confirmar el código TOTP de seis dígitos.
 - Consultar o regenerar códigos de recuperación.
 - Desactivar 2FA con confirmación de contraseña.
 
-Cuando 2FA está confirmado, el inicio de sesión solicita el código temporal en `/two-factor-challenge`. También permite utilizar un código de recuperación. El secreto TOTP y los códigos de recuperación no se exponen como props de Inertia ni se registran en logs.
+Cuando 2FA está confirmado, el inicio de sesión solicita el código temporal en `/two-factor-challenge` y también permite utilizar un código de recuperación. El secreto TOTP y los códigos de recuperación no se exponen como props de Inertia ni se registran en logs.
 
 Para verificar esta funcionalidad:
 
 ```bash
-php artisan route:list | grep two-factor
+php artisan route:list | Select-String two-factor
 php artisan test --filter=GoogleAuthenticatorTwoFactorTest
 ```
 
 El QR de Google Authenticator es distinto de los QR de identidad del módulo 1.6: debe escanearse desde la aplicación autenticadora, no desde la cámara normal del teléfono.
 
-## Instalación verificada
-
-La instalación local fue validada con PHP 8.4, Composer 2.10, Node.js 22, npm 10 y la extensión PHP `mongodb`. Las dependencias de backend y frontend se instalan con:
-
-```bash
-composer install
-npm install
-```
-
-Después de crear `.env` y generar la clave, el frontend se compila con:
-
-```bash
-php artisan key:generate
-npm run build
-```
-
-La aplicación carga correctamente con Laravel 13 y la conexión configurada para MongoDB. Para ejecutar migraciones y pruebas es necesario iniciar antes Podman y el contenedor `campus-mongo`.
+La instalación verificada utiliza PHP 8.4, Composer 2.10, Node.js 22, npm 10 y la extensión PHP `mongodb`. Las dependencias se instalan con `composer install` y `npm install`; después de crear `.env` y generar la clave, el frontend se valida con `npm run build`. Las migraciones y pruebas requieren que Podman y el contenedor `campus-mongo` estén activos.
 
 ## Ramas de desarrollo
 
