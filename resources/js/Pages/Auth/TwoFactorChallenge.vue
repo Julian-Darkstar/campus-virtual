@@ -7,7 +7,7 @@ import TextInput from '@/Components/TextInput.vue';
 import { Head, useForm } from '@inertiajs/vue3';
 import { ref } from 'vue';
 
-const recovery = ref(false);
+const usingRecoveryCode = ref(false);
 
 const form = useForm({
     code: '',
@@ -15,14 +15,24 @@ const form = useForm({
 });
 
 const submit = () => {
-    form.post('/two-factor-challenge');
+    if (usingRecoveryCode.value) {
+        form.code = '';
+    } else {
+        form.recovery_code = '';
+        form.code = form.code.replace(/\s/g, '');
+    }
+
+    form.post(route('two-factor.login.store'), {
+        onFinish: () => {
+            form.reset('code', 'recovery_code');
+        },
+    });
 };
 
-const toggleRecovery = () => {
-    recovery.value = !recovery.value;
+const toggleMode = () => {
+    usingRecoveryCode.value = !usingRecoveryCode.value;
     form.clearErrors();
-    form.code = '';
-    form.recovery_code = '';
+    form.reset('code', 'recovery_code');
 };
 </script>
 
@@ -30,53 +40,61 @@ const toggleRecovery = () => {
     <GuestLayout>
         <Head title="Verificación en dos pasos" />
 
-        <div class="mb-4 text-sm text-slate-600">
-            <template v-if="!recovery">
-                Confirma el acceso a tu cuenta ingresando el código de autenticación de tu dispositivo.
-            </template>
-            <template v-else>
-                Confirma el acceso ingresando uno de tus códigos de recuperación de emergencia.
-            </template>
+        <div class="mb-6">
+            <h1 class="text-xl font-semibold text-gray-900">Verificación en dos pasos</h1>
+            <p class="mt-2 text-sm text-gray-600">
+                <template v-if="!usingRecoveryCode">
+                    Abre Google Authenticator e introduce el código de 6 dígitos de Campus Digital.
+                </template>
+                <template v-else>
+                    Introduce uno de los códigos de recuperación que guardaste al activar 2FA.
+                </template>
+            </p>
         </div>
 
-        <form @submit.prevent="submit" class="space-y-4">
-            <div v-if="!recovery">
-                <InputLabel for="code" value="Código de autenticación" class="text-xs font-semibold uppercase text-slate-600" />
+        <form @submit.prevent="submit">
+            <div v-if="!usingRecoveryCode">
+                <InputLabel for="code" value="Código de autenticación" />
                 <TextInput
                     id="code"
+                    v-model="form.code"
                     type="text"
                     inputmode="numeric"
-                    class="mt-1 block w-full rounded-xl border-slate-200 text-sm bg-slate-50"
-                    v-model="form.code"
-                    autofocus
                     autocomplete="one-time-code"
+                    maxlength="6"
+                    autofocus
+                    required
+                    class="mt-1 block w-full tracking-[0.35em]"
+                    placeholder="000000"
                 />
                 <InputError class="mt-2" :message="form.errors.code" />
             </div>
 
             <div v-else>
-                <InputLabel for="recovery_code" value="Código de recuperación" class="text-xs font-semibold uppercase text-slate-600" />
+                <InputLabel for="recovery_code" value="Código de recuperación" />
                 <TextInput
                     id="recovery_code"
-                    type="text"
-                    class="mt-1 block w-full rounded-xl border-slate-200 text-sm bg-slate-50"
                     v-model="form.recovery_code"
+                    type="text"
                     autocomplete="one-time-code"
+                    autofocus
+                    required
+                    class="mt-1 block w-full"
                 />
                 <InputError class="mt-2" :message="form.errors.recovery_code" />
             </div>
 
-            <div class="flex items-center justify-between pt-2">
+            <div class="mt-6 flex items-center justify-between gap-4">
                 <button
                     type="button"
-                    class="text-xs text-blue-600 underline hover:text-blue-800"
-                    @click="toggleRecovery"
+                    class="text-sm font-medium text-blue-700 underline hover:text-blue-900"
+                    @click="toggleMode"
                 >
-                    {{ !recovery ? 'Usar código de recuperación' : 'Usar código de autenticación' }}
+                    {{ usingRecoveryCode ? 'Usar Google Authenticator' : 'Usar código de recuperación' }}
                 </button>
 
-                <PrimaryButton :class="{ 'opacity-25': form.processing }" :disabled="form.processing">
-                    Confirmar acceso
+                <PrimaryButton :disabled="form.processing">
+                    Verificar
                 </PrimaryButton>
             </div>
         </form>

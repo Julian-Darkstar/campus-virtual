@@ -97,9 +97,9 @@ Descarga y ejecuta MongoDB 7 con un volumen persistente:
 
 ```bash
 podman pull docker.io/library/mongo:7
-podman run -d --name campus-mongo \
-  -p 27017:27017 \
-  -v mongo_data:/data/db \
+podman run -d --name campus-mongo `
+  -p 27017:27017 `
+  -v mongo_data:/data/db `
   docker.io/library/mongo:7
 podman update --restart=unless-stopped campus-mongo
 ```
@@ -119,6 +119,29 @@ php artisan tinker --execute="DB::connection('mongodb')->command(['ping' => 1]);
 ```
 
 La instalación local de desarrollo no habilita autenticación en MongoDB. Para DataGrip utiliza `localhost`, puerto `27017`, autenticación `No authentication` y la base `campus_virtual`. En MongoDB, las tablas se representan como colecciones; la aplicación crea `users` y `sessions` cuando existen documentos.
+
+## Google Authenticator y autenticación 2FA
+
+La autenticación de dos factores utiliza TOTP estándar mediante Laravel Fortify y es compatible con Google Authenticator. No se requiere una API, cuenta de servicio ni SDK de Google.
+
+Desde **Perfil**, el usuario puede:
+
+- Activar 2FA confirmando su contraseña.
+- Escanear el código QR `otpauth://` desde Google Authenticator o introducir la clave manual.
+- Confirmar el código TOTP de seis dígitos.
+- Consultar o regenerar códigos de recuperación.
+- Desactivar 2FA con confirmación de contraseña.
+
+Cuando 2FA está confirmado, el inicio de sesión solicita el código temporal en `/two-factor-challenge`. También permite utilizar un código de recuperación. El secreto TOTP y los códigos de recuperación no se exponen como props de Inertia ni se registran en logs.
+
+Para verificar esta funcionalidad:
+
+```bash
+php artisan route:list | grep two-factor
+php artisan test --filter=GoogleAuthenticatorTwoFactorTest
+```
+
+El QR de Google Authenticator es distinto de los QR de identidad del módulo 1.6: debe escanearse desde la aplicación autenticadora, no desde la cámara normal del teléfono.
 
 ## Ramas de desarrollo
 
