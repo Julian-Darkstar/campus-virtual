@@ -3,6 +3,8 @@
 use App\Events\StudentConsentChanged;
 use App\Models\EventOutbox;
 use App\Models\ServiceClient;
+use App\Models\StudentProfile;
+use App\Models\User;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Http;
 
@@ -24,8 +26,14 @@ it('issues and accepts an OAuth service token', function () {
 
     $tokenResponse->assertOk()->assertJsonPath('token_type', 'Bearer');
     $token = $tokenResponse->json('access_token');
+    $student = User::factory()->create();
+    StudentProfile::create([
+        'user_id' => (string) $student->getKey(),
+        'enrollment_number' => 'INT-001',
+        'academic_status' => 'active',
+    ]);
 
-    $this->getJson('/api/v1/students/student-1/status', [
+    $this->getJson("/api/v1/students/{$student->getKey()}/status", [
         'Authorization' => "Bearer {$token}",
     ])->assertOk()->assertJsonPath('meta.api_version', 'v1');
 });

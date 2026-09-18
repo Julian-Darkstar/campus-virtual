@@ -7,6 +7,7 @@ enum StudentStatus: string
     case Active = 'active';
     case Inactive = 'inactive';
     case Suspended = 'suspended';
+    case Restricted = 'restricted';
     case Leave = 'leave';
     case Graduated = 'graduated';
 
@@ -16,6 +17,7 @@ enum StudentStatus: string
             self::Active => 'Activo',
             self::Inactive => 'Inactivo',
             self::Suspended => 'Suspendido',
+            self::Restricted => 'Restringido',
             self::Leave => 'Baja temporal',
             self::Graduated => 'Egresado',
         };

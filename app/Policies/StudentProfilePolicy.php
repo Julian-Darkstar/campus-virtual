@@ -21,4 +21,14 @@ class StudentProfilePolicy
     {
         return $this->viewAny($user);
     }
+
+    public function viewServices(User $user, StudentProfile $profile): bool
+    {
+        return (string) $user->getKey() === (string) $profile->user_id || $this->viewAny($user);
+    }
+
+    public function updateAcademicStatus(User $user, StudentProfile $profile): bool
+    {
+        return $this->viewAny($user);
+    }
 }

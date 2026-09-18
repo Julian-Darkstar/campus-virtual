@@ -8,6 +8,8 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use MongoDB\Laravel\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Fortify\TwoFactorAuthenticatable;
+use MongoDB\Model\BSONArray;
+use MongoDB\Model\BSONDocument;
 
 class User extends Authenticatable
 {
@@ -57,9 +59,34 @@ class User extends Authenticatable
     protected function roles(): Attribute
     {
         return Attribute::make(
-            get: fn ($value) => is_string($value) ? (json_decode($value, true) ?: []) : ($value ?: []),
-            set: fn ($value) => is_string($value) ? json_decode($value, true) : ($value ?: []),
+            get: fn ($value) => $this->normalizeRoles($value),
+            set: fn ($value) => new BSONArray($this->normalizeRoles($value)),
         );
+    }
+
+    private function normalizeRoles(mixed $value): array
+    {
+        if ($value === null) {
+            return [];
+        }
+
+        if (is_string($value)) {
+            $value = json_decode($value, true) ?: [];
+        }
+
+        if ($value instanceof BSONArray) {
+            $value = $value->getArrayCopy();
+        }
+
+        $roles = $value instanceof \Traversable ? iterator_to_array($value) : (array) $value;
+
+        return array_values(array_map(function (mixed $role): array {
+            if ($role instanceof BSONDocument) {
+                return $role->getArrayCopy();
+            }
+
+            return is_object($role) ? get_object_vars($role) : (array) $role;
+        }, $roles));
     }
 
     public function studentProfile()
@@ -80,6 +107,16 @@ class User extends Authenticatable
     public function securityEvents()
     {
         return $this->hasMany(SecurityEvent::class, 'user_id');
+    }
+
+    public function consents()
+    {
+        return $this->hasMany(Consent::class, 'user_id');
+    }
+
+    public function communicationPreference()
+    {
+        return $this->hasOne(CommunicationPreference::class, 'user_id');
     }
     /**
      * Tarjetas NFC pertenecientes al usuario.

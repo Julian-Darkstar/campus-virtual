@@ -9,7 +9,6 @@ class AcademicStatusHistory extends Model
 {
     protected $connection = 'mongodb';
     protected $collection = 'academic_status_history';
-    public $timestamps = false;
     protected $fillable = [
         'student_profile_id', 'from_status', 'to_status', 'reason', 'changed_by', 'changed_at',
     ];

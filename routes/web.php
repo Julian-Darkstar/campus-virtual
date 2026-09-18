@@ -29,6 +29,13 @@ Route::middleware(['auth', 'verified', 'session.active', 'device.track'])->group
 
     Route::get('/student-services', [StudentServicesController::class, 'index'])
         ->name('student-services.index');
+    Route::post('/student-services/consents', [StudentServicesController::class, 'acceptOwnConsent'])->name('student-services.consents.accept');
+    Route::delete('/student-services/consents/{consentId}', [StudentServicesController::class, 'revokeOwnConsent'])->name('student-services.consents.revoke');
+    Route::patch('/student-services/preferences', [StudentServicesController::class, 'updateOwnPreferences'])->name('student-services.preferences.update');
+    Route::get('/student-services/students/{studentId}/consents', [StudentServicesController::class, 'consents'])->name('student-services.students.consents');
+    Route::get('/student-services/students/{studentId}/preferences', [StudentServicesController::class, 'preferences'])->name('student-services.students.preferences');
+    Route::patch('/student-services/students/{studentId}/preferences', [StudentServicesController::class, 'updatePreferences'])->name('student-services.students.preferences');
+    Route::patch('/student-services/students/{studentId}/status', [StudentServicesController::class, 'changeStatus'])->name('student-services.students.status');
 
     Route::get('/students', [StudentController::class, 'index'])->name('students.index');
     Route::get('/students/create', [StudentController::class, 'create'])->name('students.create');
