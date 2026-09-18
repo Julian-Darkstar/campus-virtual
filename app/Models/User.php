@@ -94,6 +94,38 @@ class User extends Authenticatable
         return $this->hasOne(StudentProfile::class, 'user_id');
     }
 
+    /**
+     * Safe identity contract for internal Campus Digital integrations.
+     * It intentionally excludes credentials, recovery data, tokens, contact
+     * details, and other private profile fields.
+     */
+    public function displayIdentity(): array
+    {
+        $this->loadMissing([
+            'studentProfile.campus',
+            'studentProfile.academicProgram',
+        ]);
+
+        $profile = $this->studentProfile;
+
+        return [
+            'user_id' => (string) $this->getKey(),
+            'name' => $this->name,
+            'student' => $profile ? [
+                'enrollment_number' => $profile->enrollment_number,
+                'campus' => $profile->campus ? [
+                    'code' => $profile->campus->code,
+                    'name' => $profile->campus->name,
+                ] : null,
+                'academic_program' => $profile->academicProgram ? [
+                    'code' => $profile->academicProgram->code,
+                    'name' => $profile->academicProgram->name,
+                ] : null,
+                'academic_status' => $profile->academic_status?->value,
+            ] : null,
+        ];
+    }
+
     public function devices()
     {
         return $this->hasMany(Device::class, 'user_id');
