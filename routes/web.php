@@ -56,14 +56,18 @@ Route::middleware(['auth', 'verified', 'session.active', 'device.track'])->group
         Route::get('/', [QrController::class, 'index'])
             ->name('index');
 
-        Route::post('/generar', [QrController::class, 'generate'])
-            ->name('generate');
-
         Route::get('/historial', [QrController::class, 'history'])
             ->name('history');
 
-        Route::post('/simular-validacion', [QrController::class, 'simulateValidation'])
-            ->name('simulate');
+        // Limitadas: generar/validar son las operaciones sensibles a
+        // fuerza bruta de codigos de este modulo.
+        Route::middleware('throttle:30,1')->group(function () {
+            Route::post('/generar', [QrController::class, 'generate'])
+                ->name('generate');
+
+            Route::post('/simular-validacion', [QrController::class, 'simulateValidation'])
+                ->name('simulate');
+        });
     });
 
     // --------------------------------------------------------------
@@ -74,7 +78,16 @@ Route::middleware(['auth', 'verified', 'session.active', 'device.track'])->group
         Route::get('/dispositivos', [SecurityDeviceController::class, 'index'])
             ->name('devices.index');
 
+        Route::get('/eventos', [SecurityDeviceController::class, 'events'])
+            ->name('events');
+
+        // Latido para deteccion casi-inmediata de sesion revocada
+        // desde otra pestaña/dispositivo (ver AuthenticatedLayout.vue).
+        Route::get('/latido', [SecurityDeviceController::class, 'heartbeat'])
+            ->name('heartbeat');
+
         Route::post('/reautenticar', [AuthController::class, 'reauthenticate'])
+            ->middleware('throttle:10,1')
             ->name('reauth');
 
         Route::middleware('reauth')->group(function () {
@@ -87,43 +100,58 @@ Route::middleware(['auth', 'verified', 'session.active', 'device.track'])->group
 
             Route::post('/dispositivos/{device}/confianza', [SecurityDeviceController::class, 'trust'])
                 ->name('devices.trust');
+
+            Route::delete('/dispositivos/{device}', [SecurityDeviceController::class, 'destroy'])
+                ->name('devices.destroy');
         });
     });
 
     // --------------------------------------------------------------
     // Modulo 1.4 - Registro de tarjetas NFC
     // --------------------------------------------------------------
+    // Index/history quedan abiertas a cualquier usuario autenticado;
+    // el propio controlador filtra para que un usuario sin rol admin
+    // solo vea/consulte sus propias tarjetas (ver NfcCardController y
+    // NfcCardPolicy).
     Route::get('/nfc-cards', [NfcCardController::class, 'index'])
         ->name('nfc-cards.index');
-
-    Route::get('/nfc-cards/create', [NfcCardController::class, 'create'])
-        ->name('nfc-cards.create');
-
-    Route::post('/nfc-cards', [NfcCardController::class, 'store'])
-        ->name('nfc-cards.store');
-
-    // --------------------------------------------------------------
-    // Modulo 1.5 - Ciclo de vida de credenciales NFC
-    // --------------------------------------------------------------
-    Route::patch('/nfc-cards/{nfcCard}/status', [NfcCardController::class, 'updateStatus'])
-        ->name('nfc-cards.update-status');
 
     Route::get('/nfc-cards/{nfcCard}/history', [NfcCardController::class, 'history'])
         ->name('nfc-cards.history');
 
-    // Módulos 1.2 y 1.3
+    // Registrar y administrar credenciales NFC es una operación
+    // sensible de identidad: se restringe explícitamente a admin,
+    // tanto por middleware (defensa en profundidad a nivel de ruta)
+    // como por policy dentro del controlador (NfcCardPolicy).
+    Route::middleware('role.context:admin')->group(function () {
+        Route::get('/nfc-cards/create', [NfcCardController::class, 'create'])
+            ->name('nfc-cards.create');
+
+        Route::post('/nfc-cards', [NfcCardController::class, 'store'])
+            ->name('nfc-cards.store');
+
+        // ------------------------------------------------------------
+        // Modulo 1.5 - Ciclo de vida de credenciales NFC
+        // ------------------------------------------------------------
+        Route::patch('/nfc-cards/{nfcCard}/status', [NfcCardController::class, 'updateStatus'])
+            ->name('nfc-cards.update-status');
+    });
+
+    // --------------------------------------------------------------
+    // Módulos 1.2 y 1.3 - Roles y permisos contextuales
+    // --------------------------------------------------------------
+    // /roles (GET) queda visible para cualquier autenticado: cada quien
+    // consulta sus propios roles y su estado de 2FA.
     Route::get('/roles', [RoleController::class, 'index'])->name('roles.index');
-    Route::post('/roles/assign', [RoleController::class, 'assign'])->name('roles.assign');
 
-    // Módulos 1.6 y 1.7 (Equipo)
-    Route::get('/security/devices', [SecurityDeviceController::class, 'index'])->name('security.devices.index');
-    Route::delete('/security/devices/{device}', [SecurityDeviceController::class, 'destroy'])->name('security.devices.destroy');
-    Route::post('/security/devices/logout-others', [SecurityDeviceController::class, 'logoutOthers'])->name('security.devices.logout-others');
-
-    Route::get('/identity/qr', [QrController::class, 'index'])->name('identity.qr');
-    Route::get('/identity/qr/view', [QrController::class, 'index'])->name('identity.qr.view');
-    Route::post('/identity/qr/refresh', [QrController::class, 'generate'])->name('identity.qr.refresh');
-    Route::post('/identity/qr/validate', [QrController::class, 'simulateValidation'])->name('identity.qr.validate');
+    // /roles/assign es la ruta que corregimos: SOLO un administrador
+    // puede llegar aquí. El middleware de ruta es la primera barrera;
+    // RolePolicy::assign (vía $this->authorize en el controlador) es
+    // la segunda, para que la regla no dependa únicamente de no
+    // olvidar el middleware en una ruta futura.
+    Route::post('/roles/assign', [RoleController::class, 'assign'])
+        ->middleware('role.context:admin')
+        ->name('roles.assign');
 });
 
 require __DIR__.'/auth.php';

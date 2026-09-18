@@ -34,6 +34,15 @@ class HandleInertiaRequests extends Middleware
             'auth' => [
                 'user' => $request->user(),
             ],
+            // Antes estos mensajes se generaban (p. ej. al forzar el
+            // logout por sesion revocada) pero nunca llegaban al
+            // frontend porque Inertia no los compartia. Sin esto, el
+            // aviso "tu sesion fue cerrada de forma remota" se perdia.
+            'flash' => [
+                'success' => fn () => $request->session()->get('success'),
+                'error' => fn () => $request->session()->get('error'),
+                'status' => fn () => $request->session()->get('status'),
+            ],
         ];
     }
 }

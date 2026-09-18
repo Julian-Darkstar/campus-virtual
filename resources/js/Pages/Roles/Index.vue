@@ -19,6 +19,10 @@ const props = defineProps({
     twoFactorEnabled: {
         type: Boolean,
         default: null
+    },
+    canAssignRoles: {
+        type: Boolean,
+        default: false
     }
 });
 
@@ -180,7 +184,10 @@ const disable2FA = () => {
                         </div>
                     </div>
 
-                    <!-- Columna Derecha: Simulador de asignación contextual (Módulo 1.3) -->
+                    <!-- Columna Derecha: Asignación de roles (Módulo 1.3) -->
+                    <!-- Solo visible/operable para administradores: /roles/assign
+                         rechaza (403) cualquier intento que no venga de un admin,
+                         así que ni siquiera mostramos el formulario a los demás. -->
                     <div class="lg:col-span-5 bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-4">
                         <div>
                             <span class="text-xs font-semibold uppercase tracking-wider text-blue-600">
@@ -194,7 +201,11 @@ const disable2FA = () => {
                             </p>
                         </div>
 
-                        <form @submit.prevent="submitRole" class="space-y-4">
+                        <p v-if="!canAssignRoles" class="text-sm text-gray-500 bg-slate-50 border border-slate-200 rounded-xl p-4">
+                            Solo un administrador puede asignar roles. Si necesitas un rol distinto, contacta a un administrador de la plataforma.
+                        </p>
+
+                        <form v-else @submit.prevent="submitRole" class="space-y-4">
                             <div>
                                 <InputLabel for="role_name" value="Rol a otorgar" class="text-xs font-semibold uppercase text-slate-600" />
                                 <select

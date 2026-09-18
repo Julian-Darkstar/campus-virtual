@@ -1,13 +1,59 @@
 <script setup>
-import { ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import ApplicationLogo from '@/Components/ApplicationLogo.vue';
 import Dropdown from '@/Components/Dropdown.vue';
 import DropdownLink from '@/Components/DropdownLink.vue';
 import NavLink from '@/Components/NavLink.vue';
 import ResponsiveNavLink from '@/Components/ResponsiveNavLink.vue';
-import { Link } from '@inertiajs/vue3';
+import { Link, usePage } from '@inertiajs/vue3';
 
 const showingNavigationDropdown = ref(false);
+
+// --- Banner de mensajes flash (antes se generaban pero nunca se veían) ---
+const page = usePage();
+const flash = computed(() => page.props.flash ?? {});
+const dismissedFlash = ref(false);
+
+// --- Latido: detecta en segundos si esta pestaña fue revocada desde
+// otro dispositivo/pestaña, en vez de esperar a que el usuario navegue
+// por su cuenta (Módulo 1.7). ---
+const sessionRevokedOverlay = ref(false);
+let heartbeatTimer = null;
+
+async function checkHeartbeat() {
+    try {
+        const res = await window.axios.get(route('security.heartbeat'), {
+            headers: { Accept: 'application/json' },
+            validateStatus: () => true,
+        });
+
+        const isJsonOk = res.headers['content-type']?.includes('application/json') && res.data?.ok === true;
+
+        if (!isJsonOk) {
+            // La respuesta no fue el JSON esperado: la sesión fue
+            // invalidada a mitad de camino (revocada desde otra
+            // pestaña) y el navegador terminó siguiendo la redirección
+            // hasta el HTML de otra pantalla.
+            sessionRevokedOverlay.value = true;
+            clearInterval(heartbeatTimer);
+        }
+    } catch (e) {
+        // Error de red: no lo tratamos como revocación, solo se
+        // reintenta en el siguiente latido.
+    }
+}
+
+function acknowledgeRevoked() {
+    window.location.href = route('login');
+}
+
+onMounted(() => {
+    heartbeatTimer = setInterval(checkHeartbeat, 8000);
+});
+
+onBeforeUnmount(() => {
+    clearInterval(heartbeatTimer);
+});
 </script>
 
 <template>
@@ -39,7 +85,7 @@ const showingNavigationDropdown = ref(false);
                                 <NavLink :href="route('security.devices.index')" :active="route().current('security.devices.index')">
                                     Dispositivos
                                 </NavLink>
-                                <NavLink :href="route('identity.qr')" :active="route().current('identity.qr')">
+                                <NavLink :href="route('identity.qr.index')" :active="route().current('identity.qr.index')">
                                     Identidad QR
                                 </NavLink>
                             </div>
@@ -100,7 +146,7 @@ const showingNavigationDropdown = ref(false);
                         <ResponsiveNavLink :href="route('security.devices.index')" :active="route().current('security.devices.index')">
                             Dispositivos
                         </ResponsiveNavLink>
-                        <ResponsiveNavLink :href="route('identity.qr')" :active="route().current('identity.qr')">
+                        <ResponsiveNavLink :href="route('identity.qr.index')" :active="route().current('identity.qr.index')">
                             Identidad QR
                         </ResponsiveNavLink>
                     </div>
@@ -118,6 +164,22 @@ const showingNavigationDropdown = ref(false);
                 </div>
             </nav>
 
+            <!-- Banner de mensajes flash (éxito / error / estado) -->
+            <div
+                v-if="!dismissedFlash && (flash.success || flash.error || flash.status)"
+                class="border-b px-4 py-3 text-sm sm:px-6 lg:px-8"
+                :class="flash.error
+                    ? 'border-rose-200 bg-rose-50 text-rose-700'
+                    : 'border-emerald-200 bg-emerald-50 text-emerald-700'"
+            >
+                <div class="mx-auto flex max-w-7xl items-center justify-between gap-4">
+                    <span>{{ flash.error ?? flash.success ?? flash.status }}</span>
+                    <button @click="dismissedFlash = true" class="text-xs font-semibold opacity-70 hover:opacity-100">
+                        Cerrar
+                    </button>
+                </div>
+            </div>
+
             <header class="bg-white shadow" v-if="$slots.header">
                 <div class="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
                     <slot name="header" />
@@ -127,6 +189,25 @@ const showingNavigationDropdown = ref(false);
             <main>
                 <slot />
             </main>
+        </div>
+
+        <!-- Aviso de sesión revocada desde otro dispositivo (Módulo 1.7) -->
+        <div v-if="sessionRevokedOverlay" class="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/50 px-4">
+            <div class="w-full max-w-sm rounded-2xl border border-slate-200 bg-white p-6 text-center shadow-xl">
+                <div class="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-rose-50 text-2xl">
+                    🔒
+                </div>
+                <h3 class="mb-1 font-bold text-slate-800">Tu sesión fue cerrada</h3>
+                <p class="mb-4 text-sm text-slate-500">
+                    Se revocó esta sesión desde otro dispositivo o pestaña. Continúa para volver a entrar.
+                </p>
+                <button
+                    @click="acknowledgeRevoked"
+                    class="w-full rounded-lg bg-[#00338D] py-2 text-sm font-semibold text-white transition hover:bg-[#0284C7]"
+                >
+                    Entendido, continuar
+                </button>
+            </div>
         </div>
     </div>
 </template>

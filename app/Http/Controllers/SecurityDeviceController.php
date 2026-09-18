@@ -13,12 +13,15 @@ use Inertia\Inertia;
  * Modulo 1.7 - Dispositivos y sesiones confiables.
  *
  * Lista dispositivos/sesiones del estudiante autenticado, permite
- * cerrar sesiones remotas y marcar/desmarcar dispositivos como
- * confiables. Las acciones sensibles (revoke, trust) exigen una
- * reautenticacion reciente (middleware "reauth").
+ * cerrar sesiones remotas, marcar/desmarcar dispositivos como
+ * confiables y eliminarlos por completo. Las acciones sensibles
+ * (revoke, trust, destroy) exigen una reautenticacion reciente
+ * (middleware "reauth").
  */
 class SecurityDeviceController extends Controller
 {
+    private const EVENTS_PAGE_SIZE = 20;
+
     public function __construct(private IdentityService $identity)
     {
     }
@@ -50,6 +53,7 @@ class SecurityDeviceController extends Controller
                     'platform' => $device->platform,
                     'browser' => $device->browser,
                     'is_trusted' => (bool) $device->is_trusted,
+                    'is_new' => (bool) $device->first_seen_at?->gt(now()->subHours(24)),
                     'last_ip_address' => $device->last_ip_address,
                     'first_seen_at' => optional($device->first_seen_at)->format('d/m/Y H:i'),
                     'last_seen_at' => optional($device->last_seen_at)->diffForHumans(),
@@ -57,23 +61,47 @@ class SecurityDeviceController extends Controller
                 ];
             });
 
-        $events = SecurityEvent::where('user_id', (string) $user->_id)
-            ->orderByDesc('occurred_at')
-            ->limit(20)
-            ->get()
-            ->map(fn (SecurityEvent $e) => [
-                'id' => (string) $e->_id,
-                'type' => $e->type,
-                'severity' => $e->severity,
-                'ip_address' => $e->ip_address,
-                'occurred_at' => optional($e->occurred_at)->diffForHumans() ?? '—',
-            ]);
-
         return Inertia::render('Security/Devices', [
             'devices' => $devices,
-            'events' => $events,
+            'events' => $this->mapEvents($this->eventsQuery($user)->limit(self::EVENTS_PAGE_SIZE)->get()),
+            'eventsPageSize' => self::EVENTS_PAGE_SIZE,
             'reauthValidMinutes' => (int) env('REAUTH_VALID_MINUTES', 5),
+            'maxActiveSessions' => (int) env('MAX_ACTIVE_SESSIONS_PER_USER', 5),
         ]);
+    }
+
+    /**
+     * Bitácora de seguridad paginada (scroll "cargar más"), para no
+     * traer siempre toda la historia del estudiante en el render
+     * inicial de la pantalla.
+     */
+    public function events(Request $request)
+    {
+        $offset = max(0, (int) $request->query('offset', 0));
+
+        $events = $this->eventsQuery($request->user())
+            ->skip($offset)
+            ->limit(self::EVENTS_PAGE_SIZE)
+            ->get();
+
+        return response()->json([
+            'items' => $this->mapEvents($events),
+            'next_offset' => $offset + self::EVENTS_PAGE_SIZE,
+            'has_more' => $events->count() === self::EVENTS_PAGE_SIZE,
+        ]);
+    }
+
+    /**
+     * Latido ligero que el frontend consulta cada pocos segundos desde
+     * CUALQUIER pantalla autenticada. No hace nada por si mismo: su
+     * unico proposito es dar pie a que el middleware "session.active"
+     * (ya presente en este grupo de rutas) detecte que esta sesion fue
+     * revocada desde otra pestaña/dispositivo y actue de inmediato, en
+     * vez de esperar a que el usuario navegue por su cuenta.
+     */
+    public function heartbeat(Request $request)
+    {
+        return response()->json(['ok' => true]);
     }
 
     public function revoke(Request $request, string $session)
@@ -117,5 +145,37 @@ class SecurityDeviceController extends Controller
         return back()->with('success', $data['trusted']
             ? 'Dispositivo marcado como confiable.'
             : 'Dispositivo marcado como no confiable.');
+    }
+
+    /**
+     * Elimina un dispositivo del listado del estudiante (revoca antes
+     * cualquier sesión activa que dependa de él).
+     */
+    public function destroy(Request $request, string $device)
+    {
+        $deviceModel = Device::where('_id', $device)
+            ->where('user_id', (string) $request->user()->_id)
+            ->firstOrFail();
+
+        $this->identity->forgetDevice($request->user(), $deviceModel);
+
+        return back()->with('success', 'Dispositivo eliminado.');
+    }
+
+    private function eventsQuery($user)
+    {
+        return SecurityEvent::where('user_id', (string) $user->_id)
+            ->orderByDesc('occurred_at');
+    }
+
+    private function mapEvents($events)
+    {
+        return $events->map(fn (SecurityEvent $e) => [
+            'id' => (string) $e->_id,
+            'type' => $e->type,
+            'severity' => $e->severity,
+            'ip_address' => $e->ip_address,
+            'occurred_at' => optional($e->occurred_at)->diffForHumans() ?? '—',
+        ]);
     }
 }

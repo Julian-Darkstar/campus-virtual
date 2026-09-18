@@ -27,5 +27,12 @@ class DatabaseSeeder extends Seeder
             RoleSeeder::class,
             StudentCatalogSeeder::class,
         ]);
+
+        // Con /roles/assign ahora restringido a administradores, se
+        // necesita al menos un admin sembrado para poder operar y
+        // asignar el resto de los roles desde la UI. En un entorno
+        // real esto se haría con un comando/artisan protegido, no con
+        // el seeder de desarrollo.
+        $user->assignRole(\App\Models\Role::ADMIN);
     }
 }

@@ -25,6 +25,7 @@ class QrToken extends Model
     protected $fillable = [
         'user_id',
         'code',
+        'short_code',
         'type',
         'purpose',
         'expires_at',

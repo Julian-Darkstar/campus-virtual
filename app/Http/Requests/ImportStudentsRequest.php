@@ -2,13 +2,26 @@
 
 namespace App\Http\Requests;
 
+use App\Models\Role;
 use Illuminate\Foundation\Http\FormRequest;
 
 class ImportStudentsRequest extends FormRequest
 {
     public function authorize(): bool
     {
-        return $this->user()?->hasRole('admin') || $this->user()?->hasRole('student_manager');
+        $user = $this->user();
+
+        if (! $user) {
+            return false;
+        }
+
+        foreach (Role::STUDENT_MANAGEMENT_ROLES as $role) {
+            if ($user->hasRole($role)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     public function rules(): array

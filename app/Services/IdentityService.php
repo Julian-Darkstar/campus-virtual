@@ -17,7 +17,8 @@ use Illuminate\Support\Str;
  *
  * Los demas equipos NO deben reimplementar esta logica: deben resolver
  * identidad/QR/dispositivos a traves de este servicio o del contrato
- * expuesto en routes/api.php (/api/v1/identity/*).
+ * expuesto en routes/api.php (/api/v1/identity/*) cuando se construya
+ * el modulo 1.10.
  */
 class IdentityService
 {
@@ -42,9 +43,12 @@ class IdentityService
             ->whereNull('revoked_at')
             ->update(['revoked_at' => now()]);
 
+        $code = QrToken::generateCode();
+
         $token = QrToken::create([
             'user_id' => (string) $user->_id,
-            'code' => QrToken::generateCode(),
+            'code' => $code,
+            'short_code' => $this->generateUniqueShortCode(),
             'type' => 'dynamic',
             'purpose' => $purpose,
             'expires_at' => now()->addSeconds($ttl),
@@ -87,13 +91,122 @@ class IdentityService
     }
 
     /**
-     * Contrato de validacion consumido por otros dominios (2, 5, 6):
-     * dado un codigo QR, determina si es valido y, de serlo, resuelve
-     * la identidad del estudiante. Siempre deja rastro en qr_validations.
+     * Firma HMAC de un codigo QR: protege el contenido del QR frente a
+     * manipulacion/adivinanza de formato. La firma no reemplaza la
+     * consulta a base de datos (que sigue siendo la fuente de verdad),
+     * pero permite rechazar payloads corruptos o inventados antes de
+     * siquiera consultar la coleccion qr_tokens.
      */
-    public function validateQrCode(string $code, ?User $validatedBy, ?string $context, ?string $ip): array
+    public function signCode(string $code): string
     {
-        $token = QrToken::where('code', $code)->first();
+        return substr(hash_hmac('sha256', $code, config('app.key')), 0, 10);
+    }
+
+    /**
+     * Payload completo que se dibuja en el QR: prefijo + codigo + firma.
+     */
+    public function buildQrPayload(QrToken $token): string
+    {
+        $prefix = $token->type === 'identification' ? 'CAMPUSDIGITAL-ID:' : 'CAMPUSDIGITAL:';
+
+        return $prefix.$token->code.'.'.$this->signCode($token->code);
+    }
+
+    /**
+     * Genera un codigo corto numerico (6 digitos) que el estudiante
+     * puede dictar/teclear manualmente si no se puede escanear el QR.
+     * No es criptograficamente fuerte (es de un solo uso y expira con
+     * el token dinamico), pero evita colisiones con otros codigos
+     * activos en este momento.
+     */
+    private function generateUniqueShortCode(): string
+    {
+        do {
+            $shortCode = (string) random_int(100000, 999999);
+            $exists = QrToken::where('short_code', $shortCode)
+                ->where('type', 'dynamic')
+                ->whereNull('consumed_at')
+                ->whereNull('revoked_at')
+                ->where('expires_at', '>', now())
+                ->exists();
+        } while ($exists);
+
+        return $shortCode;
+    }
+
+    /**
+     * Interpreta lo que escaneo/tecleo el validador: puede ser el
+     * codigo "pelado", el codigo corto de respaldo, o el payload
+     * completo del QR (prefijo + codigo + firma). Devuelve el codigo
+     * a buscar y si la firma (cuando venia incluida) es valida.
+     */
+    private function parseScannedInput(string $input): array
+    {
+        $raw = trim($input);
+
+        foreach (['CAMPUSDIGITAL-ID:', 'CAMPUSDIGITAL:'] as $prefix) {
+            if (str_starts_with($raw, $prefix)) {
+                $raw = substr($raw, strlen($prefix));
+                break;
+            }
+        }
+
+        if (str_contains($raw, '.')) {
+            [$code, $signature] = array_pad(explode('.', $raw, 2), 2, '');
+
+            return [
+                'code' => $code,
+                'is_short_code' => false,
+                'signature_valid' => hash_equals($this->signCode($code), $signature),
+            ];
+        }
+
+        // Codigo corto de respaldo: siempre numerico y de 6 digitos, no
+        // lleva firma porque se piensa para captura manual.
+        if (preg_match('/^\d{6}$/', $raw)) {
+            return ['code' => $raw, 'is_short_code' => true, 'signature_valid' => null];
+        }
+
+        return ['code' => $raw, 'is_short_code' => false, 'signature_valid' => null];
+    }
+
+    /**
+     * Contrato de validacion consumido por otros dominios (2, 5, 6):
+     * dado un codigo/QR escaneado, determina si es valido y, de
+     * serlo, resuelve la identidad del estudiante. Siempre deja
+     * rastro en qr_validations.
+     *
+     * El consumo del token dinamico es atomico (update condicionado)
+     * para que dos validaciones casi simultaneas del mismo QR no
+     * puedan resolver ambas como "valid".
+     *
+     * @param  string  $level  "basic" (por defecto, nombre enmascarado)
+     *                         o "full" (nombre completo) segun cuanto
+     *                         necesite exponer el consumidor.
+     */
+    public function validateQrCode(
+        string $input,
+        ?User $validatedBy,
+        ?string $context,
+        ?string $ip,
+        ?string $validatorLabel = null,
+        string $level = 'basic',
+    ): array {
+        $parsed = $this->parseScannedInput($input);
+
+        if ($parsed['signature_valid'] === false) {
+            $this->logValidation(null, null, $validatedBy, $validatorLabel, 'invalid_signature', $context, $ip);
+
+            return ['ok' => false, 'result' => 'invalid_signature', 'identity' => null];
+        }
+
+        $token = QrToken::where('code', $parsed['code'])->first();
+
+        if (! $token && $parsed['is_short_code']) {
+            $token = QrToken::where('short_code', $parsed['code'])
+                ->where('type', 'dynamic')
+                ->first();
+        }
 
         $result = match (true) {
             $token === null => 'not_found',
@@ -103,36 +216,60 @@ class IdentityService
             default => 'valid',
         };
 
+        // Consumo atomico: solo el primer request que llega a marcar
+        // consumed_at "gana"; si otro ya lo hizo entre el match() de
+        // arriba y este update, aqui se detecta y se corrige el
+        // resultado a "consumed".
+        if ($result === 'valid' && $token->type === 'dynamic') {
+            $updated = QrToken::where('_id', $token->_id)
+                ->whereNull('consumed_at')
+                ->whereNull('revoked_at')
+                ->update(['consumed_at' => now()]);
+
+            if ($updated === 0) {
+                $result = 'consumed';
+            }
+        }
+
+        $this->logValidation($token, $token?->user_id, $validatedBy, $validatorLabel, $result, $context, $ip);
+
+        if ($result === 'valid') {
+            return [
+                'ok' => true,
+                'result' => 'valid',
+                'identity' => $token->user->displayIdentity($level),
+            ];
+        }
+
+        return ['ok' => false, 'result' => $result, 'identity' => null];
+    }
+
+    private function logValidation(
+        ?QrToken $token,
+        ?string $userId,
+        ?User $validatedBy,
+        ?string $validatorLabel,
+        string $result,
+        ?string $context,
+        ?string $ip,
+    ): void {
         QrValidation::create([
             'qr_token_id' => $token ? (string) $token->_id : null,
-            'user_id' => $token?->user_id,
+            'user_id' => $userId,
             'validated_by_user_id' => $validatedBy ? (string) $validatedBy->_id : null,
+            'validator_label' => $validatorLabel,
             'result' => $result,
             'context' => $context,
             'ip_address' => $ip,
         ]);
 
         SecurityEvent::log([
-            'user_id' => $token?->user_id,
+            'user_id' => $userId,
             'type' => $result === 'valid' ? 'qr_validated' : 'qr_validation_failed',
             'severity' => $result === 'valid' ? 'info' : 'warning',
             'ip_address' => $ip,
-            'metadata' => ['code' => $code, 'result' => $result, 'context' => $context],
+            'metadata' => ['result' => $result, 'context' => $context, 'validator_label' => $validatorLabel],
         ]);
-
-        if ($result === 'valid' && $token->type === 'dynamic') {
-            $token->update(['consumed_at' => now()]);
-        }
-
-        if ($result === 'valid') {
-            return [
-                'ok' => true,
-                'result' => 'valid',
-                'identity' => $token->user->displayIdentity(),
-            ];
-        }
-
-        return ['ok' => false, 'result' => $result, 'identity' => null];
     }
 
     /**
@@ -141,9 +278,22 @@ class IdentityService
      * ---------------------------------------------------------------
      */
 
-    public function fingerprint(Request $request): string
+    /**
+     * Huella logica del dispositivo. Se apoya principalmente en una
+     * cookie opaca de larga duracion (cd_device_id) para que el mismo
+     * telefono/navegador no aparezca como "dispositivo nuevo" cada vez
+     * que cambia de IP (redes moviles). Si por algun motivo no hay
+     * cookie disponible, cae de vuelta a user agent + IP.
+     */
+    public function fingerprint(Request $request, ?string $deviceCookie = null): string
     {
-        return hash('sha256', $request->userAgent().'|'.$request->ip());
+        $deviceCookie ??= $request->cookie('cd_device_id');
+
+        $seed = $deviceCookie
+            ? 'device:'.$deviceCookie
+            : 'ua-ip:'.$request->userAgent().'|'.$request->ip();
+
+        return hash('sha256', $seed);
     }
 
     /**
@@ -151,10 +301,10 @@ class IdentityService
      * autenticado, ligandola al navegador mediante un token opaco
      * (cd_session_id) guardado en la sesion nativa de Laravel.
      */
-    public function trackDeviceSession(Request $request): UserSession
+    public function trackDeviceSession(Request $request, ?string $deviceCookie = null): UserSession
     {
         $user = $request->user();
-        $fingerprint = $this->fingerprint($request);
+        $fingerprint = $this->fingerprint($request, $deviceCookie);
 
         $device = Device::where('user_id', (string) $user->_id)
             ->where('fingerprint', $fingerprint)
@@ -216,12 +366,52 @@ class IdentityService
                     'metadata' => ['device_name' => $device->device_name],
                 ]);
             }
+
+            $this->enforceConcurrentSessionLimit($user, $session);
         } else {
             $session->last_activity_at = now();
             $session->save();
         }
 
         return $session;
+    }
+
+    /**
+     * Limita cuantas sesiones activas puede tener un mismo estudiante
+     * a la vez. Si se excede el limite, revoca las sesiones activas
+     * mas antiguas (la recien creada nunca se revoca a si misma).
+     */
+    private function enforceConcurrentSessionLimit(User $user, UserSession $justCreated): void
+    {
+        $max = (int) env('MAX_ACTIVE_SESSIONS_PER_USER', 5);
+
+        if ($max <= 0) {
+            return;
+        }
+
+        $active = UserSession::where('user_id', (string) $user->_id)
+            ->whereNull('revoked_at')
+            ->orderBy('last_activity_at')
+            ->get();
+
+        if ($active->count() <= $max) {
+            return;
+        }
+
+        $excess = $active->count() - $max;
+
+        foreach ($active as $session) {
+            if ($excess <= 0) {
+                break;
+            }
+
+            if ((string) $session->_id === (string) $justCreated->_id) {
+                continue;
+            }
+
+            $this->revokeSession($user, $session, 'session_limit_exceeded');
+            $excess--;
+        }
     }
 
     public function revokeSession(User $user, UserSession $session, string $reason = 'manual'): void
@@ -264,6 +454,29 @@ class IdentityService
             'type' => $trusted ? 'device_trusted' : 'device_untrusted',
             'severity' => 'info',
         ]);
+    }
+
+    /**
+     * Elimina un dispositivo del listado del estudiante, revocando
+     * primero cualquier sesion activa que dependa de el.
+     */
+    public function forgetDevice(User $user, Device $device): void
+    {
+        abort_unless($device->user_id === (string) $user->_id, 403);
+
+        UserSession::where('device_id', (string) $device->_id)
+            ->whereNull('revoked_at')
+            ->get()
+            ->each(fn (UserSession $session) => $this->revokeSession($user, $session, 'device_removed'));
+
+        SecurityEvent::log([
+            'user_id' => (string) $user->_id,
+            'device_id' => (string) $device->_id,
+            'type' => 'device_removed',
+            'severity' => 'info',
+        ]);
+
+        $device->delete();
     }
 
     private function guessDeviceName(Request $request): string

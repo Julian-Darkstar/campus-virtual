@@ -81,6 +81,45 @@ class User extends Authenticatable
     {
         return $this->hasMany(SecurityEvent::class, 'user_id');
     }
+
+    public function qrTokens()
+    {
+        return $this->hasMany(QrToken::class, 'user_id');
+    }
+
+    /**
+     * Identidad resumida que se expone cuando otro dominio valida un
+     * QR del estudiante (Modulo 1.6). Minimiza lo expuesto por
+     * defecto ("basic"): el consumidor solo ve nombre enmascarado +
+     * rol, salvo que explicitamente pida "full" (por ejemplo, un
+     * validador que si necesita el nombre completo para emitir un
+     * comprobante).
+     */
+    public function displayIdentity(string $level = 'basic'): array
+    {
+        return [
+            'name' => $level === 'full' ? $this->name : $this->maskedName(),
+            'matricula' => $this->studentProfile?->enrollment_number,
+            'role' => 'estudiante',
+        ];
+    }
+
+    /**
+     * "Juan Perez Lopez" -> "Juan Perez L."
+     */
+    private function maskedName(): string
+    {
+        $parts = preg_split('/\s+/', trim((string) $this->name)) ?: [];
+
+        if (count($parts) < 2) {
+            return (string) $this->name;
+        }
+
+        $last = array_pop($parts);
+
+        return trim(implode(' ', $parts).' '.mb_substr($last, 0, 1).'.');
+    }
+
     /**
      * Tarjetas NFC pertenecientes al usuario.
      */
@@ -107,6 +146,12 @@ class User extends Authenticatable
 
     public function assignRole(string $roleName, ?string $scopeType = null, ?string $scopeId = null): void
     {
+        // Defensa en profundidad: nunca persistir un rol que no exista en el
+        // catálogo oficial, sin importar qué controlador llame a este método.
+        if (! in_array($roleName, Role::VALID_ROLES, true)) {
+            throw new \InvalidArgumentException("El rol '{$roleName}' no es un rol válido.");
+        }
+
         $roles = $this->roles ?? [];
 
         foreach ($roles as $role) {
