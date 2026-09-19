@@ -72,7 +72,13 @@ class NfcCardController extends Controller
             'new_status' => 'active',
         ]);
 
-        CredentialChanged::dispatch((string) $card->getKey(), 'nfc', 'registered', 'active', (string) auth()->id());
+        CredentialChanged::dispatch(
+            (string) $card->getKey(),
+            'nfc',
+            'registered',
+            'active',
+            (string) auth()->id()
+        );
 
         return redirect()
             ->route('nfc-cards.index')
@@ -120,13 +126,9 @@ class NfcCardController extends Controller
         // Actualizar el estado de la tarjeta.
         $nfcCard->update([
             'status' => $newStatus,
-
-            // Guardar cuándo fue bloqueada.
             'blocked_at' => $newStatus === 'blocked'
                 ? now()
                 : $nfcCard->blocked_at,
-
-            // Guardar cuándo fue reemplazada.
             'replaced_at' => $newStatus === 'replaced'
                 ? now()
                 : $nfcCard->replaced_at,
@@ -146,7 +148,7 @@ class NfcCardController extends Controller
             'nfc',
             'status_changed',
             $newStatus,
-            (string) auth()->id(),
+            (string) auth()->id()
         );
 
         return redirect()
@@ -154,6 +156,92 @@ class NfcCardController extends Controller
             ->with(
                 'success',
                 'El estado de la tarjeta se actualizó correctamente.'
+            );
+    }
+
+    /**
+     * Reemplazar una tarjeta NFC por una nueva.
+     *
+     * La tarjeta anterior queda como "replaced"
+     * y la nueva tarjeta queda como "active".
+     */
+    public function replace(Request $request, NfcCard $nfcCard)
+    {
+        $validated = $request->validate([
+            'uid' => [
+                'required',
+                'string',
+                'max:255',
+                'unique:nfc_cards,uid',
+            ],
+            'reason' => [
+                'required',
+                'string',
+                'max:500',
+            ],
+        ], [
+            'uid.required' => 'Debes ingresar el UID de la nueva tarjeta.',
+            'uid.unique' => 'Esta tarjeta NFC ya está registrada.',
+            'reason.required' => 'Debes indicar el motivo del reemplazo.',
+            'reason.max' => 'El motivo no puede superar los 500 caracteres.',
+        ]);
+
+        // Evitar reemplazar una tarjeta que ya fue reemplazada.
+        if ($nfcCard->status === 'replaced') {
+            return back()->withErrors([
+                'status' => 'Esta tarjeta ya fue reemplazada.',
+            ]);
+        }
+
+        // Crear la nueva tarjeta para el mismo estudiante.
+        $newCard = NfcCard::create([
+            'user_id' => $nfcCard->user_id,
+            'uid' => $validated['uid'],
+            'registered_by' => auth()->id(),
+            'status' => 'active',
+            'registered_at' => now(),
+            'replacement_of_card_id' => $nfcCard->getKey(),
+        ]);
+
+        // Marcar la tarjeta anterior como reemplazada.
+        $nfcCard->update([
+            'status' => 'replaced',
+            'replaced_at' => now(),
+            'replaced_by_card_id' => $newCard->getKey(),
+        ]);
+
+        // Registrar el reemplazo en el historial de la tarjeta anterior.
+        $nfcCard->credentialEvents()->create([
+            'performed_by' => auth()->id(),
+            'event_type' => 'replaced',
+            'reason' => $validated['reason'],
+            'previous_status' => 'active',
+            'new_status' => 'replaced',
+        ]);
+
+        // Registrar la creación de la nueva tarjeta en su historial.
+        $newCard->credentialEvents()->create([
+            'performed_by' => auth()->id(),
+            'event_type' => 'registered',
+            'reason' => 'Nueva tarjeta generada por reemplazo',
+            'previous_status' => null,
+            'new_status' => 'active',
+        ]);
+
+        // Notificar que cambió la credencial.
+        CredentialChanged::dispatch(
+            (string) $newCard->getKey(),
+            'nfc',
+            'replaced',
+            'active',
+            (string) auth()->id()
+        );
+
+        return redirect()
+            ->route('nfc-cards.index')
+            ->with(
+                'success',
+                'La tarjeta NFC fue reemplazada correctamente.'
             );
     }
 

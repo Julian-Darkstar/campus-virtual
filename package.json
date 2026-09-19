@@ -7,7 +7,7 @@
         "dev": "vite"
     },
     "devDependencies": {
-        "@inertiajs/vue3": "^2.0.0",
+        "@inertiajs/vue3": "^2.3.28",
         "@tailwindcss/forms": "^0.5.3",
         "@tailwindcss/vite": "^4.0.0",
         "@vitejs/plugin-vue": "^6.0.0",
@@ -20,6 +20,7 @@
         "vue": "^3.4.0"
     },
     "dependencies": {
+        "@inertiajs/core": "^2.3.28",
         "@zxing/library": "^0.21.3",
         "axios": "^1.6.2",
         "qrcode": "^1.5.4"
