@@ -23,6 +23,7 @@ Route::get('/', function () {
 });
 
 Route::middleware(['auth', 'verified', 'session.active', 'device.track'])->group(function () {
+
     Route::get('/dashboard', function () {
         return Inertia::render('Dashboard');
     })->name('dashboard');
@@ -30,16 +31,29 @@ Route::middleware(['auth', 'verified', 'session.active', 'device.track'])->group
     Route::get('/student-services', [StudentServicesController::class, 'index'])
         ->name('student-services.index');
 
-    Route::get('/students', [StudentController::class, 'index'])->name('students.index');
-    Route::get('/students/create', [StudentController::class, 'create'])->name('students.create');
-    Route::post('/students', [StudentController::class, 'store'])->name('students.store');
-    Route::post('/students/import', [StudentImportController::class, 'store'])->name('students.import');
-    Route::get('/students/{student}/edit', [StudentController::class, 'edit'])->name('students.edit');
-    Route::patch('/students/{student}', [StudentController::class, 'update'])->name('students.update');
+    Route::get('/students', [StudentController::class, 'index'])
+        ->name('students.index');
+
+    Route::get('/students/create', [StudentController::class, 'create'])
+        ->name('students.create');
+
+    Route::post('/students', [StudentController::class, 'store'])
+        ->name('students.store');
+
+    Route::post('/students/import', [StudentImportController::class, 'store'])
+        ->name('students.import');
+
+    Route::get('/students/{student}/edit', [StudentController::class, 'edit'])
+        ->name('students.edit');
+
+    Route::patch('/students/{student}', [StudentController::class, 'update'])
+        ->name('students.update');
+
 
     // --------------------------------------------------------------
     // Perfil
     // --------------------------------------------------------------
+
     Route::get('/profile', [ProfileController::class, 'edit'])
         ->name('profile.edit');
 
@@ -49,50 +63,68 @@ Route::middleware(['auth', 'verified', 'session.active', 'device.track'])->group
     Route::delete('/profile', [ProfileController::class, 'destroy'])
         ->name('profile.destroy');
 
+
     // --------------------------------------------------------------
     // Modulo 1.6 - Identidad QR
     // --------------------------------------------------------------
-    Route::prefix('identidad/qr')->name('identity.qr.')->group(function () {
-        Route::get('/', [QrController::class, 'index'])
-            ->name('index');
 
-        Route::post('/generar', [QrController::class, 'generate'])
-            ->name('generate');
+    Route::prefix('identidad/qr')
+        ->name('identity.qr.')
+        ->group(function () {
 
-        Route::get('/historial', [QrController::class, 'history'])
-            ->name('history');
+            Route::get('/', [QrController::class, 'index'])
+                ->name('index');
 
-        Route::post('/simular-validacion', [QrController::class, 'simulateValidation'])
-            ->name('simulate');
-    });
+            Route::post('/generar', [QrController::class, 'generate'])
+                ->name('generate');
+
+            Route::get('/historial', [QrController::class, 'history'])
+                ->name('history');
+
+            Route::post('/simular-validacion', [QrController::class, 'simulateValidation'])
+                ->name('simulate');
+        });
+
 
     // --------------------------------------------------------------
     // Modulo 1.7 - Dispositivos y sesiones confiables
     // --------------------------------------------------------------
-    Route::prefix('seguridad')->name('security.')->group(function () {
 
-        Route::get('/dispositivos', [SecurityDeviceController::class, 'index'])
-            ->name('devices.index');
+    Route::prefix('seguridad')
+        ->name('security.')
+        ->group(function () {
 
-        Route::post('/reautenticar', [AuthController::class, 'reauthenticate'])
-            ->name('reauth');
+            Route::get('/dispositivos', [SecurityDeviceController::class, 'index'])
+                ->name('devices.index');
 
-        Route::middleware('reauth')->group(function () {
+            Route::post('/reautenticar', [AuthController::class, 'reauthenticate'])
+                ->name('reauth');
 
-            Route::post('/sesiones/{session}/revocar', [SecurityDeviceController::class, 'revoke'])
-                ->name('sessions.revoke');
+            Route::middleware('reauth')
+                ->group(function () {
 
-            Route::post('/sesiones/revocar-otras', [SecurityDeviceController::class, 'revokeOthers'])
-                ->name('sessions.revoke-others');
+                    Route::post(
+                        '/sesiones/{session}/revocar',
+                        [SecurityDeviceController::class, 'revoke']
+                    )->name('sessions.revoke');
 
-            Route::post('/dispositivos/{device}/confianza', [SecurityDeviceController::class, 'trust'])
-                ->name('devices.trust');
+                    Route::post(
+                        '/sesiones/revocar-otras',
+                        [SecurityDeviceController::class, 'revokeOthers']
+                    )->name('sessions.revoke-others');
+
+                    Route::post(
+                        '/dispositivos/{device}/confianza',
+                        [SecurityDeviceController::class, 'trust']
+                    )->name('devices.trust');
+                });
         });
-    });
+
 
     // --------------------------------------------------------------
     // Modulo 1.4 - Registro de tarjetas NFC
     // --------------------------------------------------------------
+
     Route::get('/nfc-cards', [NfcCardController::class, 'index'])
         ->name('nfc-cards.index');
 
@@ -102,28 +134,77 @@ Route::middleware(['auth', 'verified', 'session.active', 'device.track'])->group
     Route::post('/nfc-cards', [NfcCardController::class, 'store'])
         ->name('nfc-cards.store');
 
+
     // --------------------------------------------------------------
     // Modulo 1.5 - Ciclo de vida de credenciales NFC
     // --------------------------------------------------------------
-    Route::patch('/nfc-cards/{nfcCard}/status', [NfcCardController::class, 'updateStatus'])
-        ->name('nfc-cards.update-status');
 
-    Route::get('/nfc-cards/{nfcCard}/history', [NfcCardController::class, 'history'])
-        ->name('nfc-cards.history');
+    Route::patch(
+        '/nfc-cards/{nfcCard}/status',
+        [NfcCardController::class, 'updateStatus']
+    )->name('nfc-cards.update-status');
 
-    // Módulos 1.2 y 1.3
-    Route::get('/roles', [RoleController::class, 'index'])->name('roles.index');
-    Route::post('/roles/assign', [RoleController::class, 'assign'])->name('roles.assign');
+    Route::post(
+        '/nfc-cards/{nfcCard}/replace',
+        [NfcCardController::class, 'replace']
+    )->name('nfc-cards.replace');
 
-    // Módulos 1.6 y 1.7 (Equipo)
-    Route::get('/security/devices', [SecurityDeviceController::class, 'index'])->name('security.devices.index');
-    Route::delete('/security/devices/{device}', [SecurityDeviceController::class, 'destroy'])->name('security.devices.destroy');
-    Route::post('/security/devices/logout-others', [SecurityDeviceController::class, 'logoutOthers'])->name('security.devices.logout-others');
+    Route::get(
+        '/nfc-cards/{nfcCard}/history',
+        [NfcCardController::class, 'history']
+    )->name('nfc-cards.history');
 
-    Route::get('/identity/qr', [QrController::class, 'index'])->name('identity.qr');
-    Route::get('/identity/qr/view', [QrController::class, 'index'])->name('identity.qr.view');
-    Route::post('/identity/qr/refresh', [QrController::class, 'generate'])->name('identity.qr.refresh');
-    Route::post('/identity/qr/validate', [QrController::class, 'simulateValidation'])->name('identity.qr.validate');
+
+    // --------------------------------------------------------------
+    // Modulos 1.2 y 1.3
+    // --------------------------------------------------------------
+
+    Route::get('/roles', [RoleController::class, 'index'])
+        ->name('roles.index');
+
+    Route::post('/roles/assign', [RoleController::class, 'assign'])
+        ->name('roles.assign');
+
+
+    // --------------------------------------------------------------
+    // Modulos 1.6 y 1.7 (Equipo)
+    // --------------------------------------------------------------
+
+    Route::get(
+        '/security/devices',
+        [SecurityDeviceController::class, 'index']
+    )->name('security.devices.index');
+
+    Route::delete(
+        '/security/devices/{device}',
+        [SecurityDeviceController::class, 'destroy']
+    )->name('security.devices.destroy');
+
+    Route::post(
+        '/security/devices/logout-others',
+        [SecurityDeviceController::class, 'logoutOthers']
+    )->name('security.devices.logout-others');
+
+    Route::get(
+        '/identity/qr',
+        [QrController::class, 'index']
+    )->name('identity.qr');
+
+    Route::get(
+        '/identity/qr/view',
+        [QrController::class, 'index']
+    )->name('identity.qr.view');
+
+    Route::post(
+        '/identity/qr/refresh',
+        [QrController::class, 'generate']
+    )->name('identity.qr.refresh');
+
+    Route::post(
+        '/identity/qr/validate',
+        [QrController::class, 'simulateValidation']
+    )->name('identity.qr.validate');
 });
 
-require __DIR__.'/auth.php';
+require __DIR__ . '/auth.php';
+

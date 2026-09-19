@@ -3,10 +3,12 @@
 use App\Http\Controllers\StudentServicesController;
 use App\Http\Controllers\OAuthTokenController;
 use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\QrController;
 
 Route::post('/oauth/token', OAuthTokenController::class)->middleware('throttle:60,1');
 
 Route::prefix('v1')->middleware('oauth.service')->group(function () {
+
     Route::get('/students/{studentId}/status', [StudentServicesController::class, 'status']);
     Route::get('/students/{studentId}/status/history', [StudentServicesController::class, 'statusHistory']);
     Route::get('/students/{studentId}/consents', [StudentServicesController::class, 'consents']);
@@ -14,4 +16,5 @@ Route::prefix('v1')->middleware('oauth.service')->group(function () {
     Route::delete('/students/{studentId}/consents/{consentId}', [StudentServicesController::class, 'revokeConsent']);
     Route::get('/students/{studentId}/preferences', [StudentServicesController::class, 'preferences']);
     Route::patch('/students/{studentId}/preferences', [StudentServicesController::class, 'updatePreferences']);
+    Route::post('/identity/qr-validate', [QrController::class, 'validateQr']);
 });

@@ -61,6 +61,13 @@ class User extends Authenticatable
             set: fn ($value) => is_string($value) ? json_decode($value, true) : ($value ?: []),
         );
     }
+    public function displayIdentity(): array
+{
+    return [
+        'name' => $this->name,
+        'email' => $this->email,
+    ];
+}
 
     public function studentProfile()
     {

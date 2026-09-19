@@ -102,4 +102,21 @@ class QrController extends Controller
 
         return response()->json($result);
     }
+public function validateQr(Request $request)
+{
+    $data = $request->validate([
+        'code' => ['required', 'string'],
+        'context' => ['nullable', 'string', 'max:150'],
+    ]);
+
+    return response()->json(
+        $this->identity->validateQrCode(
+            $data['code'],
+            $request->user(),
+            $data['context'] ?? 'api',
+            $request->ip()
+        )
+    );
 }
+}
+
