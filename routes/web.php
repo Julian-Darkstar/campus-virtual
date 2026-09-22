@@ -30,6 +30,25 @@ Route::middleware(['auth', 'verified', 'session.active', 'device.track'])->group
     Route::get('/student-services', [StudentServicesController::class, 'index'])
         ->name('student-services.index');
 
+    // 1.8/1.9: el estudiante gestiona únicamente su propia privacidad
+    // desde la sesión web. El backend vuelve a comprobar propietario/rol.
+    Route::post('/student-services/consents/{consentId}', function (\Illuminate\Http\Request $request, string $consentId) {
+        $profile = $request->user()?->studentProfile;
+        abort_unless($profile, 404, 'No existe un perfil estudiantil para esta cuenta.');
+        $request->merge(['consent_id' => $consentId]);
+        return app(StudentServicesController::class)->acceptConsent($request, (string) $profile->getKey());
+    })->name('student-services.consents.accept');
+    Route::delete('/student-services/consents/{consentId}', function (\Illuminate\Http\Request $request, string $consentId) {
+        $profile = $request->user()?->studentProfile;
+        abort_unless($profile, 404, 'No existe un perfil estudiantil para esta cuenta.');
+        return app(StudentServicesController::class)->revokeConsent($request, (string) $profile->getKey(), $consentId);
+    })->name('student-services.consents.revoke');
+    Route::patch('/student-services/preferences', function (\Illuminate\Http\Request $request) {
+        $profile = $request->user()?->studentProfile;
+        abort_unless($profile, 404, 'No existe un perfil estudiantil para esta cuenta.');
+        return app(StudentServicesController::class)->updatePreferences($request, (string) $profile->getKey());
+    })->name('student-services.preferences.update');
+
     Route::get('/students', [StudentController::class, 'index'])->name('students.index');
     Route::get('/students/create', [StudentController::class, 'create'])->name('students.create');
     Route::post('/students', [StudentController::class, 'store'])->name('students.store');
@@ -68,6 +87,15 @@ Route::middleware(['auth', 'verified', 'session.active', 'device.track'])->group
             Route::post('/simular-validacion', [QrController::class, 'simulateValidation'])
                 ->name('simulate');
         });
+
+        // Contextos de validación (quién organiza qué y hasta cuándo):
+        // cualquier validador puede listarlos/crearlos; solo su autor
+        // o un admin puede cancelarlos (ver QrValidationContextPolicy).
+        Route::prefix('contextos')->name('contexts.')->group(function () {
+            Route::get('/', [QrController::class, 'contexts'])->name('index');
+            Route::post('/', [QrController::class, 'storeContext'])->name('store');
+            Route::post('/{context}/cancelar', [QrController::class, 'cancelContext'])->name('cancel');
+        });
     });
 
     // --------------------------------------------------------------
@@ -97,6 +125,8 @@ Route::middleware(['auth', 'verified', 'session.active', 'device.track'])->group
 
             Route::post('/sesiones/revocar-otras', [SecurityDeviceController::class, 'revokeOthers'])
                 ->name('sessions.revoke-others');
+            Route::post('/sesiones/revocar-todas', [SecurityDeviceController::class, 'revokeAll'])
+                ->name('sessions.revoke-all');
 
             Route::post('/dispositivos/{device}/confianza', [SecurityDeviceController::class, 'trust'])
                 ->name('devices.trust');
@@ -135,6 +165,11 @@ Route::middleware(['auth', 'verified', 'session.active', 'device.track'])->group
         // ------------------------------------------------------------
         Route::patch('/nfc-cards/{nfcCard}/status', [NfcCardController::class, 'updateStatus'])
             ->name('nfc-cards.update-status');
+
+        // Reemplazo de tarjeta (rama cerrar-nfc-qr, integrada aquí):
+        // misma sensibilidad que updateStatus, mismo nivel de protección.
+        Route::post('/nfc-cards/{nfcCard}/replace', [NfcCardController::class, 'replace'])
+            ->name('nfc-cards.replace');
     });
 
     // --------------------------------------------------------------

@@ -11,6 +11,9 @@ const showingNavigationDropdown = ref(false);
 
 // --- Banner de mensajes flash (antes se generaban pero nunca se veían) ---
 const page = usePage();
+const currentRoles = computed(() => page.props.auth?.user?.roles ?? []);
+const hasAnyRole = (...names) => currentRoles.value.some((role) => names.includes(role?.name));
+const canManageStudents = computed(() => hasAnyRole('admin', 'maestro'));
 const flash = computed(() => page.props.flash ?? {});
 const dismissedFlash = ref(false);
 
@@ -76,7 +79,7 @@ onBeforeUnmount(() => {
                                 <NavLink :href="route('student-services.index')" :active="route().current('student-services.index')">
                                     Mi condición
                                 </NavLink>
-                                <NavLink :href="route('students.index')" :active="route().current('students.*')">
+                                <NavLink v-if="canManageStudents" :href="route('students.index')" :active="route().current('students.*')">
                                     Estudiantes
                                 </NavLink>
                                 <NavLink :href="route('roles.index')" :active="route().current('roles.index')">
@@ -137,7 +140,7 @@ onBeforeUnmount(() => {
                         <ResponsiveNavLink :href="route('student-services.index')" :active="route().current('student-services.index')">
                             Mi condición
                         </ResponsiveNavLink>
-                        <ResponsiveNavLink :href="route('students.index')" :active="route().current('students.*')">
+                        <ResponsiveNavLink v-if="canManageStudents" :href="route('students.index')" :active="route().current('students.*')">
                             Estudiantes
                         </ResponsiveNavLink>
                         <ResponsiveNavLink :href="route('roles.index')" :active="route().current('roles.index')">

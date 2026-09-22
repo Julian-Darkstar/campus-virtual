@@ -3,13 +3,16 @@ import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import { Head } from '@inertiajs/vue3';
 import { onBeforeUnmount, onMounted, ref } from 'vue';
 import QRCode from 'qrcode';
-import { BrowserQRCodeReader } from '@zxing/library';
 
 const props = defineProps({
     ttlSeconds: { type: Number, default: 30 },
     identificationPayload: { type: String, default: '' },
     recentValidations: { type: Array, default: () => [] },
     historyPageSize: { type: Number, default: 15 },
+    canValidate: { type: Boolean, default: false },
+    canViewFullIdentity: { type: Boolean, default: false },
+    qrContexts: { type: Array, default: () => [] },
+    currentUserId: { type: String, default: '' },
 });
 
 const dynamicCanvas = ref(null);
@@ -25,11 +28,67 @@ const historyLoading = ref(false);
 
 // --- Simulador de validación externa ---
 const simCode = ref('');
-const simContext = ref('biblioteca-central');
-const simValidatorLabel = ref('');
+const simContextId = ref(props.qrContexts[0]?.id ?? '');
+const simNote = ref('');
 const simLevel = ref('basic');
 const simResult = ref(null);
 const simLoading = ref(false);
+const simError = ref('');
+
+// --- Contextos de validación (quién organiza qué y hasta cuándo) ---
+const contexts = ref(props.qrContexts);
+const newContextName = ref('');
+const newContextEndsAt = ref('');
+const contextLoading = ref(false);
+const contextError = ref('');
+
+async function reloadContexts() {
+    const { data } = await window.axios.get(route('identity.qr.contexts.index'));
+    contexts.value = data.items;
+    if (!simContextId.value && contexts.value.length) {
+        simContextId.value = contexts.value[0].id;
+    }
+}
+
+async function createContext() {
+    if (!newContextName.value || !newContextEndsAt.value) return;
+    contextLoading.value = true;
+    contextError.value = '';
+    try {
+        const { data } = await window.axios.post(route('identity.qr.contexts.store'), {
+            name: newContextName.value,
+            // datetime-local no manda zona horaria; el backend interpreta
+            // la hora del servidor, igual que el resto de la app.
+            ends_at: newContextEndsAt.value,
+        });
+        contexts.value = [data, ...contexts.value];
+        simContextId.value = data.id;
+        newContextName.value = '';
+        newContextEndsAt.value = '';
+    } catch (e) {
+        contextError.value = e.response?.data?.message
+            ?? Object.values(e.response?.data?.errors ?? {}).flat()[0]
+            ?? 'No se pudo crear el contexto.';
+    } finally {
+        contextLoading.value = false;
+    }
+}
+
+async function cancelContext(contextId) {
+    contextLoading.value = true;
+    contextError.value = '';
+    try {
+        await window.axios.post(route('identity.qr.contexts.cancel', { context: contextId }));
+        contexts.value = contexts.value.filter((c) => c.id !== contextId);
+        if (simContextId.value === contextId) {
+            simContextId.value = contexts.value[0]?.id ?? '';
+        }
+    } catch (e) {
+        contextError.value = e.response?.data?.message ?? 'No se pudo cancelar el contexto.';
+    } finally {
+        contextLoading.value = false;
+    }
+}
 
 let tickTimer = null;
 let refreshTimer = null;
@@ -96,18 +155,25 @@ async function loadMoreHistory() {
 }
 
 async function runSimulation() {
-    if (!simCode.value) return;
+    if (!simCode.value || !simContextId.value) return;
     simLoading.value = true;
     simResult.value = null;
+    simError.value = '';
     try {
         const { data } = await window.axios.post(route('identity.qr.simulate'), {
             code: simCode.value,
-            context: simContext.value,
-            validator_label: simValidatorLabel.value || null,
+            context_id: simContextId.value,
+            note: simNote.value || null,
             level: simLevel.value,
         });
         simResult.value = data;
         await reloadHistory();
+    } catch (e) {
+        simError.value = e.response?.status === 403
+            ? (e.response?.data?.message ?? 'Tu rol no tiene permiso para esta validación.')
+            : (e.response?.data?.message
+                ?? Object.values(e.response?.data?.errors ?? {}).flat()[0]
+                ?? 'No se pudo validar el código. Intenta de nuevo.');
     } finally {
         simLoading.value = false;
     }
@@ -119,61 +185,6 @@ function useCurrentCodeInSimulator() {
 
 function useShortCodeInSimulator() {
     simCode.value = shortCode.value ?? '';
-}
-
-// --- Escáner real con cámara (reemplaza depender de la app de cámara
-// del sistema, que en iOS no reconoce QR de texto plano como este) ---
-const scannerVideo = ref(null);
-const scanning = ref(false);
-const scanError = ref('');
-const scanSuccessFlash = ref(false);
-let codeReader = null;
-
-async function startScan() {
-    scanError.value = '';
-
-    if (!window.isSecureContext) {
-        scanError.value = 'La cámara solo funciona en HTTPS (o localhost). Este origen no es seguro.';
-        return;
-    }
-
-    scanning.value = true;
-
-    try {
-        codeReader = new BrowserQRCodeReader();
-        const devices = await BrowserQRCodeReader.listVideoInputDevices();
-
-        if (devices.length === 0) {
-            throw new Error('sin-camaras');
-        }
-
-        // Preferir la cámara trasera cuando el dispositivo la identifica.
-        const rearCamera = devices.find((d) => /back|rear|trasera|environment/i.test(d.label));
-        const deviceId = (rearCamera ?? devices[devices.length - 1]).deviceId;
-
-        await codeReader.decodeFromVideoDevice(deviceId, scannerVideo.value, (result, err) => {
-            if (result) {
-                simCode.value = result.getText();
-                stopScan();
-                scanSuccessFlash.value = true;
-                setTimeout(() => (scanSuccessFlash.value = false), 1500);
-                runSimulation();
-            }
-            // Los "err" intermedios (NotFoundException por cada frame sin
-            // QR detectado todavía) son normales y se ignoran.
-        });
-    } catch (e) {
-        scanning.value = false;
-        scanError.value = e?.name === 'NotAllowedError'
-            ? 'Permiso de cámara denegado. Habilítalo en los ajustes del navegador.'
-            : 'No se pudo acceder a la cámara en este dispositivo.';
-    }
-}
-
-function stopScan() {
-    codeReader?.reset();
-    codeReader = null;
-    scanning.value = false;
 }
 
 const resultStyles = {
@@ -198,7 +209,6 @@ onMounted(async () => {
 onBeforeUnmount(() => {
     clearInterval(tickTimer);
     clearTimeout(refreshTimer);
-    stopScan();
 });
 </script>
 
@@ -279,52 +289,84 @@ onBeforeUnmount(() => {
 
                     <!-- Simulador de validación + historial -->
                     <div class="space-y-6">
-                        <!-- Escáner con cámara -->
-                        <section class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-                            <h3 class="mb-1 text-sm font-bold uppercase tracking-wide text-slate-400">
-                                Escanear con cámara
-                            </h3>
-                            <p class="mb-4 text-xs text-slate-500">
-                                Lee el QR directamente dentro de la app (funciona igual en Android e iPhone; no
-                                depende de que la app de cámara del sistema reconozca el contenido).
-                            </p>
-
-                            <div v-if="scanning" class="relative overflow-hidden rounded-xl bg-black">
-                                <video ref="scannerVideo" class="aspect-square w-full object-cover" playsinline muted></video>
-                                <div class="pointer-events-none absolute inset-6 rounded-xl border-2 border-white/70"></div>
-                                <div v-if="scanSuccessFlash" class="absolute inset-0 flex items-center justify-center bg-emerald-500/70 text-sm font-bold text-white">
-                                    ¡Código leído!
-                                </div>
-                            </div>
-
-                            <button
-                                v-if="!scanning"
-                                @click="startScan"
-                                class="w-full rounded-lg bg-[#00338D] py-2 text-sm font-semibold text-white transition hover:bg-[#0284C7]"
-                            >
-                                Activar cámara
-                            </button>
-                            <button
-                                v-else
-                                @click="stopScan"
-                                class="mt-3 w-full rounded-lg border border-slate-200 py-2 text-xs font-semibold text-slate-600 hover:border-[#0284C7] hover:text-[#0284C7]"
-                            >
-                                Detener cámara
-                            </button>
-
-                            <p v-if="scanError" class="mt-3 text-xs text-rose-600">{{ scanError }}</p>
-                        </section>
-
-                        <section class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+                        <section v-if="canValidate" class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
                             <h3 class="mb-1 text-sm font-bold uppercase tracking-wide text-slate-400">
                                 Simulador de validación externa
                             </h3>
                             <p class="mb-4 text-xs text-slate-500">
                                 Así consumen otros dominios (biblioteca, eventos, cajas de asociación) el contrato
                                 <code class="rounded bg-[#E0F2FE] px-1 text-[#0284C7]">/api/v1/identity/qr-validate</code>.
-                                Acepta el código pelado, el código corto de respaldo, el payload completo firmado, o
-                                lo que acabas de leer con la cámara arriba.
+                                Acepta el código pelado, el código corto de respaldo, o el payload completo firmado.
+                                Disponible porque tu cuenta tiene un rol de validador (bibliotecario, soporte, cajero de
+                                negocio, agente de recarga/retiro o administrador).
                             </p>
+
+                            <!-- Gestión de contextos: quién organiza qué y hasta cuándo -->
+                            <div class="mb-5 rounded-xl border border-slate-200 bg-slate-50 p-4">
+                                <h4 class="mb-2 text-xs font-bold uppercase tracking-wide text-slate-500">
+                                    Mis contextos de validación
+                                </h4>
+                                <p class="mb-3 text-[11px] text-slate-500">
+                                    Un contexto es la sesión bajo la que validas (ej. "Evento de Bienvenida —
+                                    Auditorio"), con fecha/hora de cierre. Cualquier validador puede usar un
+                                    contexto vigente; solo quien lo creó (o un admin) puede cancelarlo.
+                                </p>
+
+                                <ul v-if="contexts.length" class="mb-3 space-y-2">
+                                    <li
+                                        v-for="c in contexts"
+                                        :key="c.id"
+                                        class="flex items-center justify-between rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs"
+                                    >
+                                        <div>
+                                            <p class="font-semibold text-slate-700">{{ c.name }}</p>
+                                            <p class="text-slate-400">
+                                                {{ c.ends_at ? `Cierra: ${new Date(c.ends_at).toLocaleString()}` : 'Sin fecha de cierre' }}
+                                            </p>
+                                        </div>
+                                        <button
+                                            v-if="c.created_by === props.currentUserId"
+                                            @click="cancelContext(c.id)"
+                                            type="button"
+                                            :disabled="contextLoading"
+                                            class="rounded-lg border border-rose-200 px-2 py-1 text-[11px] font-semibold text-rose-600 hover:bg-rose-50 disabled:opacity-50"
+                                        >
+                                            Cancelar
+                                        </button>
+                                    </li>
+                                </ul>
+                                <p v-else class="mb-3 text-[11px] text-slate-400">
+                                    No hay contextos vigentes todavía. Crea uno para poder validar códigos.
+                                </p>
+
+                                <div class="flex flex-wrap items-end gap-2">
+                                    <div class="min-w-[10rem] flex-1">
+                                        <label class="mb-1 block text-[11px] font-semibold text-slate-600">Nombre del contexto</label>
+                                        <input
+                                            v-model="newContextName"
+                                            class="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-xs focus:border-[#0284C7] focus:ring-[#0284C7]"
+                                            placeholder="p. ej. Evento de Bienvenida"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label class="mb-1 block text-[11px] font-semibold text-slate-600">Cierra el</label>
+                                        <input
+                                            v-model="newContextEndsAt"
+                                            type="datetime-local"
+                                            class="rounded-lg border border-slate-300 px-2 py-1.5 text-xs focus:border-[#0284C7] focus:ring-[#0284C7]"
+                                        />
+                                    </div>
+                                    <button
+                                        @click="createContext"
+                                        type="button"
+                                        :disabled="contextLoading || !newContextName || !newContextEndsAt"
+                                        class="whitespace-nowrap rounded-lg bg-[#00338D] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#0284C7] disabled:opacity-50"
+                                    >
+                                        Crear
+                                    </button>
+                                </div>
+                                <p v-if="contextError" class="mt-2 text-[11px] text-rose-600">{{ contextError }}</p>
+                            </div>
 
                             <div class="space-y-3">
                                 <div>
@@ -352,39 +394,50 @@ onBeforeUnmount(() => {
                                     </div>
                                 </div>
                                 <div>
-                                    <label class="mb-1 block text-xs font-semibold text-slate-600">Contexto / servicio</label>
-                                    <select v-model="simContext" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-[#0284C7] focus:ring-[#0284C7]">
-                                        <option value="biblioteca-central">Biblioteca central</option>
-                                        <option value="evento-bienvenida">Evento de bienvenida</option>
-                                        <option value="caja-asociacion">Caja de asociación estudiantil</option>
-                                        <option value="acceso-laboratorio">Acceso a laboratorio</option>
+                                    <label class="mb-1 block text-xs font-semibold text-slate-600">Contexto de validación</label>
+                                    <select
+                                        v-model="simContextId"
+                                        :disabled="!contexts.length"
+                                        class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-[#0284C7] focus:ring-[#0284C7] disabled:bg-slate-100"
+                                    >
+                                        <option v-if="!contexts.length" value="">Crea un contexto primero</option>
+                                        <option v-for="c in contexts" :key="c.id" :value="c.id">{{ c.name }}</option>
                                     </select>
                                 </div>
                                 <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
                                     <div>
-                                        <label class="mb-1 block text-xs font-semibold text-slate-600">Validador (opcional)</label>
+                                        <label class="mb-1 block text-xs font-semibold text-slate-600">Nota (opcional)</label>
                                         <input
-                                            v-model="simValidatorLabel"
+                                            v-model="simNote"
                                             class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-[#0284C7] focus:ring-[#0284C7]"
-                                            placeholder="p. ej. Terminal 3 - Biblioteca"
+                                            placeholder="p. ej. Terminal 3"
                                         />
+                                        <p class="mt-1 text-[11px] text-slate-400">
+                                            Solo un detalle físico (terminal, caja). Quién valida ya lo determina tu
+                                            sesión — no se puede escribir aquí.
+                                        </p>
                                     </div>
                                     <div>
                                         <label class="mb-1 block text-xs font-semibold text-slate-600">Datos a exponer</label>
                                         <select v-model="simLevel" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-[#0284C7] focus:ring-[#0284C7]">
                                             <option value="basic">Básico (nombre enmascarado)</option>
-                                            <option value="full">Completo (nombre completo)</option>
+                                            <option v-if="canViewFullIdentity" value="full">Completo (nombre completo)</option>
                                         </select>
+                                        <p v-if="!canViewFullIdentity" class="mt-1 text-[11px] text-slate-400">
+                                            Tu rol solo puede pedir nivel básico.
+                                        </p>
                                     </div>
                                 </div>
                                 <button
                                     @click="runSimulation"
                                     class="w-full rounded-lg bg-[#00338D] py-2 text-sm font-semibold text-white transition hover:bg-[#0284C7] disabled:opacity-50"
-                                    :disabled="simLoading || !simCode"
+                                    :disabled="simLoading || !simCode || !simContextId"
                                 >
                                     Validar código
                                 </button>
                             </div>
+
+                            <p v-if="simError" class="mt-3 text-xs text-rose-600">{{ simError }}</p>
 
                             <div v-if="simResult" class="mt-4 rounded-xl border border-slate-200 p-4">
                                 <div class="flex items-center justify-between">
@@ -395,9 +448,18 @@ onBeforeUnmount(() => {
                                 </div>
                                 <div v-if="simResult.identity" class="mt-3 text-sm">
                                     <p class="font-bold text-slate-800">{{ simResult.identity.name }}</p>
-                                    <p class="text-xs text-slate-500">Matrícula {{ simResult.identity.matricula ?? '—' }} · {{ simResult.identity.role ?? 'estudiante' }}</p>
+                                    <p class="text-xs text-slate-500">
+                                        Matrícula {{ simResult.identity.matricula ?? '—' }}
+                                        · {{ (simResult.identity.roles ?? []).join(', ') || 'sin rol asignado' }}
+                                    </p>
                                 </div>
                             </div>
+                        </section>
+
+                        <section v-else class="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-6 text-sm text-slate-500">
+                            El simulador de validación externa no está disponible para tu cuenta: solo pueden validar el
+                            QR de otra persona los roles bibliotecario, agente de soporte, cajero de negocio, agente de
+                            recarga/retiro o administrador. Con tu cuenta puedes generar y consultar tu propio QR arriba.
                         </section>
 
                         <section class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">

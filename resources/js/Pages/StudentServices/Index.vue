@@ -2,6 +2,7 @@
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import { Head, router } from '@inertiajs/vue3';
 import { ref } from 'vue';
+import axios from 'axios';
 
 const props = defineProps({
     student: { type: Object, required: true },
@@ -11,15 +12,57 @@ const props = defineProps({
 
 const preferences = ref({ ...props.preferences });
 const saved = ref(false);
+const busyConsent = ref(null);
+const error = ref('');
 
-function savePreferences() {
-    saved.value = true;
-    window.setTimeout(() => {
-        saved.value = false;
-    }, 2500);
+function formatDate(value) {
+    if (!value) return 'Sin historial registrado';
+    return new Intl.DateTimeFormat('es-MX', { dateStyle: 'medium' }).format(new Date(value));
 }
 
-function refreshData() {
+async function savePreferences() {
+    if (!props.student.student_id) return;
+    error.value = '';
+    try {
+        const response = await axios.patch(route('student-services.preferences.update'), preferences.value);
+        preferences.value = { ...response.data.data.preferences };
+        saved.value = true;
+        window.setTimeout(() => { saved.value = false; }, 2500);
+    } catch (e) {
+        error.value = e.response?.data?.message ?? 'No fue posible guardar tus preferencias.';
+    }
+}
+
+async function acceptConsent(consent) {
+    busyConsent.value = consent.id;
+    error.value = '';
+    try {
+        await axios.post(route('student-services.consents.accept', { consentId: consent.id }), {
+            consent_version: consent.version,
+        });
+        await refreshData();
+    } catch (e) {
+        error.value = e.response?.data?.message ?? 'No fue posible registrar el consentimiento.';
+    } finally {
+        busyConsent.value = null;
+    }
+}
+
+async function revokeConsent(consent) {
+    if (consent.required) return;
+    busyConsent.value = consent.id;
+    error.value = '';
+    try {
+        await axios.delete(route('student-services.consents.revoke', { consentId: consent.id }));
+        await refreshData();
+    } catch (e) {
+        error.value = e.response?.data?.message ?? 'No fue posible revocar el consentimiento.';
+    } finally {
+        busyConsent.value = null;
+    }
+}
+
+async function refreshData() {
     router.reload({ only: ['student', 'consents', 'preferences'] });
 }
 </script>
@@ -42,6 +85,7 @@ function refreshData() {
 
         <div class="min-h-[calc(100vh-9rem)] bg-[#F5F8FC] px-4 py-8 sm:px-6 lg:px-8">
             <div class="mx-auto max-w-6xl space-y-6">
+                <p v-if="error" class="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700">{{ error }}</p>
                 <section class="overflow-hidden rounded-2xl bg-[#00338D] px-6 py-7 text-white shadow-xl shadow-[#00338D]/10 sm:px-8">
                     <div class="flex flex-col justify-between gap-6 md:flex-row md:items-center">
                         <div>
@@ -50,18 +94,18 @@ function refreshData() {
                                 <span class="h-3 w-3 rounded-full bg-[#10B981] ring-4 ring-[#10B981]/20"></span>
                                 <h3 class="text-3xl font-bold">{{ student.status_label }}</h3>
                             </div>
-                            <p class="mt-3 max-w-xl text-sm leading-6 text-blue-100">Tu condición estudiantil se encuentra vigente y no presenta restricciones registradas.</p>
+                            <p class="mt-3 max-w-xl text-sm leading-6 text-blue-100">{{ student.known ? (student.restrictions?.student_operations === 'restricted' ? 'Tu cuenta presenta restricciones de operación según su estado académico.' : 'Tu condición estudiantil se encuentra registrada en la identidad del campus.') : 'Esta cuenta todavía no tiene un perfil estudiantil asociado.' }}</p>
                         </div>
                         <div class="rounded-xl border border-white/20 bg-white/10 px-5 py-4 backdrop-blur-sm">
                             <p class="text-xs uppercase tracking-[0.18em] text-blue-100">Matrícula</p>
                             <p class="mt-1 text-lg font-semibold">{{ student.enrollment }}</p>
-                            <p class="mt-2 text-xs text-blue-100">Vigente desde 15 ene 2026</p>
+                            <p class="mt-2 text-xs text-blue-100">{{ formatDate(student.effective_from) }}</p>
                         </div>
                     </div>
                 </section>
 
                 <div class="grid gap-6 lg:grid-cols-[1.05fr_1fr]">
-                    <section class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm sm:p-7">
+                <section class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm sm:p-7">
                         <div class="flex items-start justify-between gap-4">
                             <div>
                                 <p class="text-xs font-bold uppercase tracking-[0.18em] text-[#64748B]">Módulo 1.8</p>
@@ -96,7 +140,7 @@ function refreshData() {
                         </div>
                     </section>
 
-                    <section class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm sm:p-7">
+                <section class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm sm:p-7">
                         <div>
                             <p class="text-xs font-bold uppercase tracking-[0.18em] text-[#64748B]">Módulo 1.9</p>
                             <h3 class="mt-2 text-xl font-bold text-[#00338D]">Consentimientos</h3>
@@ -109,13 +153,35 @@ function refreshData() {
                                     <p class="mt-1 text-xs leading-5 text-slate-500">{{ consent.description }}</p>
                                     <p class="mt-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Versión {{ consent.version }}</p>
                                 </div>
-                                <span :class="consent.status === 'accepted' ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'" class="shrink-0 rounded-full px-2.5 py-1 text-[11px] font-bold">
-                                    {{ consent.status === 'accepted' ? 'Aceptado' : 'Pendiente' }}
-                                </span>
+                                <div class="flex shrink-0 flex-col items-end gap-2">
+                                    <span :class="consent.status === 'accepted' ? 'bg-emerald-50 text-emerald-700' : consent.status === 'revoked' ? 'bg-rose-50 text-rose-700' : 'bg-amber-50 text-amber-700'" class="rounded-full px-2.5 py-1 text-[11px] font-bold">
+                                        {{ consent.status === 'accepted' ? 'Aceptado' : consent.status === 'revoked' ? 'Revocado' : 'Pendiente' }}
+                                    </span>
+                                    <button
+                                        v-if="consent.status !== 'accepted'"
+                                        type="button"
+                                        class="text-xs font-bold text-[#00338D] hover:text-[#0284C7] disabled:opacity-50"
+                                        :disabled="busyConsent === consent.id"
+                                        @click="acceptConsent(consent)"
+                                    >
+                                        Aceptar
+                                    </button>
+                                    <button
+                                        v-else-if="!consent.required"
+                                        type="button"
+                                        class="text-xs font-bold text-rose-600 hover:text-rose-700 disabled:opacity-50"
+                                        :disabled="busyConsent === consent.id"
+                                        @click="revokeConsent(consent)"
+                                    >
+                                        Revocar
+                                    </button>
+                                </div>
                             </article>
                         </div>
                     </section>
                 </div>
+
+                <p v-if="error" class="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700">{{ error }}</p>
 
                 <section class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm sm:p-7">
                     <div class="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">

@@ -21,6 +21,9 @@ class ProfileController extends Controller
         return Inertia::render('Profile/Edit', [
             'mustVerifyEmail' => $request->user() instanceof MustVerifyEmail,
             'status' => session('status'),
+            // Do not expose the TOTP secret or recovery codes to Inertia props.
+            // The UI only needs to know whether 2FA has been confirmed.
+            'twoFactorEnabled' => ! is_null($request->user()->two_factor_confirmed_at),
         ]);
     }
 

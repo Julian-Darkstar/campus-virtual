@@ -11,14 +11,16 @@ class NfcCard extends Model
     protected $collection = 'nfc_cards';
 
     protected $fillable = [
-        'user_id',
-        'uid',
-        'registered_by',
-        'status',
-        'registered_at',
-        'blocked_at',
-        'replaced_at',
-    ];
+    'user_id',
+    'uid',
+    'registered_by',
+    'status',
+    'registered_at',
+    'blocked_at',
+    'replaced_at',
+    'replacement_of_card_id',
+    'replaced_by_card_id',
+];
 
     protected $casts = [
         'registered_at' => 'datetime',
@@ -49,4 +51,13 @@ class NfcCard extends Model
     {
         return $this->hasMany(CredentialEvent::class, 'nfc_card_id');
     }
+    public function replacementOf()
+{
+    return $this->belongsTo(NfcCard::class, 'replacement_of_card_id');
+}
+
+public function replacedBy()
+{
+    return $this->belongsTo(NfcCard::class, 'replaced_by_card_id');
+}
 }

@@ -23,7 +23,10 @@ class QrValidation extends Model
         'validated_by_user_id',
         'validator_label', // p.ej. "Biblioteca Central - Terminal 3" (no siempre hay un User validador)
         'result', // valid, expired, consumed, revoked, not_found, invalid_signature
-        'context', // p.ej. "biblioteca", "evento-123", "caja-asociacion-2"
+        'context', // nombre legible del QrValidationContext (o texto libre en la API de servicios)
+        'context_id', // referencia a qr_validation_contexts cuando la validación vino del simulador web
+        'purpose',
+        'correlation_id',
         'ip_address',
     ];
 

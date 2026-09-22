@@ -59,3 +59,26 @@ test('User::assignRole rejects a role that is not in the catalog regardless of c
     expect(fn () => $user->assignRole('not-a-real-role'))
         ->toThrow(InvalidArgumentException::class);
 });
+
+test('a contextual role requires the matching scope and scope id', function () {
+    $admin = User::factory()->create();
+    $admin->assignRole(Role::ADMIN);
+    $target = User::factory()->create();
+
+    $response = $this->actingAs($admin)->post('/roles/assign', [
+        'role_name' => Role::BIBLIOTECARIO,
+    ]);
+
+    $response->assertSessionHasErrors('scope_type');
+    expect($target->fresh()->hasRole(Role::BIBLIOTECARIO))->toBeFalse();
+
+    $response = $this->actingAs($admin)->post('/roles/assign', [
+        'role_name' => Role::BIBLIOTECARIO,
+        'user_id' => (string) $target->getKey(),
+        'scope_type' => 'service',
+        'scope_id' => 'biblioteca-central',
+    ]);
+
+    $response->assertRedirect();
+    expect($target->fresh()->hasRole(Role::BIBLIOTECARIO, 'service', 'biblioteca-central'))->toBeTrue();
+});

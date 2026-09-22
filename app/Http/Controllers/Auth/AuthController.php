@@ -29,6 +29,7 @@ class AuthController extends Controller
             SecurityEvent::log([
                 'user_id' => (string) $user->_id,
                 'session_id' => $request->session()->get('cd_session_id'),
+                'correlation_id' => $request->attributes->get('correlation_id'),
                 'type' => 'reauth_failed',
                 'severity' => 'warning',
                 'ip_address' => $request->ip(),
@@ -44,6 +45,7 @@ class AuthController extends Controller
         SecurityEvent::log([
             'user_id' => (string) $user->_id,
             'session_id' => $request->session()->get('cd_session_id'),
+            'correlation_id' => $request->attributes->get('correlation_id'),
             'type' => 'reauth_success',
             'severity' => 'info',
             'ip_address' => $request->ip(),

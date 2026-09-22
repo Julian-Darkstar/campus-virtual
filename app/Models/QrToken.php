@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Support\Str;
+use Illuminate\Support\Facades\Crypt;
 use MongoDB\Laravel\Eloquent\Model;
 
 /**
@@ -25,13 +26,18 @@ class QrToken extends Model
     protected $fillable = [
         'user_id',
         'code',
+        'code_encrypted',
+        'code_hash',
         'short_code',
+        'short_code_hash',
         'type',
         'purpose',
         'expires_at',
         'consumed_at',
         'revoked_at',
     ];
+
+    protected $hidden = ['code', 'code_encrypted', 'short_code', 'code_hash', 'short_code_hash'];
 
     protected $casts = [
         'expires_at' => 'datetime',
@@ -44,15 +50,31 @@ class QrToken extends Model
         return $this->belongsTo(User::class, 'user_id');
     }
 
-    public function validations()
+    public function getCodeAttribute($value): ?string
     {
-        return $this->hasMany(QrValidation::class, 'qr_token_id');
+        if ($value !== null) {
+            return $value;
+        }
+
+        $encrypted = $this->attributes['code_encrypted'] ?? null;
+        if (! $encrypted) {
+            return null;
+        }
+
+        try {
+            return Crypt::decryptString($encrypted);
+        } catch (\Throwable) {
+            return null;
+        }
     }
 
     public static function generateCode(): string
     {
         return Str::upper(Str::random(8)).'-'.now()->format('His').'-'.random_int(100, 999);
     }
+
+    public static function hashPresentedCode(string $code): string { return hash('sha256', $code); }
+    public static function hashShortCode(string $code): string { return hash('sha256', $code); }
 
     public function isExpired(): bool
     {
@@ -67,11 +89,6 @@ class QrToken extends Model
     public function isRevoked(): bool
     {
         return $this->revoked_at !== null;
-    }
-
-    public function isUsable(): bool
-    {
-        return ! $this->isExpired() && ! $this->isConsumed() && ! $this->isRevoked();
     }
 
     public function secondsRemaining(): int

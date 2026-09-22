@@ -50,6 +50,15 @@ class RoleController extends Controller
             'scope_id' => ['nullable', 'string', 'max:100'],
         ]);
 
+        $expectedScope = Role::ROLE_SCOPE_TYPES[$validated['role_name']] ?? null;
+        if ($expectedScope !== null) {
+            if (($validated['scope_type'] ?? null) !== $expectedScope || blank($validated['scope_id'] ?? null)) {
+                return back()->withErrors(['scope_type' => "El rol seleccionado requiere el ámbito {$expectedScope} y un identificador de ámbito."]);
+            }
+        } elseif (! empty($validated['scope_type']) || ! empty($validated['scope_id'])) {
+            return back()->withErrors(['scope_type' => 'El rol seleccionado es global y no acepta un ámbito contextual.']);
+        }
+
         $target = ($validated['user_id'] ?? null)
             ? User::findOrFail($validated['user_id'])
             : $request->user();

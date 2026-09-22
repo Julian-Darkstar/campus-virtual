@@ -110,7 +110,7 @@ class SecurityDeviceController extends Controller
             ->where('user_id', (string) $request->user()->_id)
             ->firstOrFail();
 
-        $this->identity->revokeSession($request->user(), $userSession, 'manual');
+        $this->identity->revokeSession($request->user(), $userSession, 'manual', $request->attributes->get('correlation_id'));
 
         return back()->with('success', 'Sesión revocada correctamente.');
     }
@@ -126,10 +126,19 @@ class SecurityDeviceController extends Controller
             ->get();
 
         foreach ($sessions as $session) {
-            $this->identity->revokeSession($user, $session, 'revoke_others');
+            $this->identity->revokeSession($user, $session, 'revoke_others', $request->attributes->get('correlation_id'));
         }
 
         return back()->with('success', 'Se cerraron todas las demás sesiones activas.');
+    }
+
+    public function revokeAll(Request $request)
+    {
+        $user=$request->user();
+        $current=(string)$request->session()->get('cd_session_id');
+        $sessions=UserSession::where('user_id',(string)$user->_id)->whereNull('revoked_at')->where('_id','!=',$current)->get();
+        foreach($sessions as $session) $this->identity->revokeSession($user,$session,'revoke_all',$request->attributes->get('correlation_id'));
+        return back()->with('success','Se cerraron todas las demás sesiones activas; la sesión actual permanece abierta.');
     }
 
     public function trust(Request $request, string $device)
@@ -176,6 +185,7 @@ class SecurityDeviceController extends Controller
             'severity' => $e->severity,
             'ip_address' => $e->ip_address,
             'occurred_at' => optional($e->occurred_at)->diffForHumans() ?? '—',
+            'correlation_id' => $e->correlation_id,
         ]);
     }
 }

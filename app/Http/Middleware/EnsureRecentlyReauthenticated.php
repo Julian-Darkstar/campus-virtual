@@ -22,7 +22,7 @@ class EnsureRecentlyReauthenticated
         $validMinutes = (int) env('REAUTH_VALID_MINUTES', 5);
         $reauthAt = $request->session()->get('reauth_at');
 
-        $isFresh = $reauthAt && now()->diffInMinutes($reauthAt) <= $validMinutes;
+        $isFresh = $reauthAt && now()->diffInSeconds($reauthAt) <= ($validMinutes * 60) && ! now()->isBefore($reauthAt);
 
         if (! $isFresh) {
             if ($request->expectsJson() || $request->header('X-Inertia')) {

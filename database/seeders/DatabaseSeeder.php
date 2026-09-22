@@ -26,6 +26,7 @@ class DatabaseSeeder extends Seeder
             IdentityDemoSeeder::class,
             RoleSeeder::class,
             StudentCatalogSeeder::class,
+            DemoAccountsSeeder::class,
         ]);
 
         // Con /roles/assign ahora restringido a administradores, se

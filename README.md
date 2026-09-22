@@ -31,7 +31,7 @@ El alcance inicial contempla:
 - **Estilos:** Tailwind CSS.
 - **Pruebas:** Pest.
 - **Persistencia:** MongoDB 7 para desarrollo local mediante Podman.
-- **QR en frontend:** `qrcode` para renderizado y `@zxing/library` para escaneo con cámara.
+- **QR en frontend:** `qrcode` para renderizado. No hay escaneo con cámara (ver nota en "Módulos QR y dispositivos"); la validación de códigos es manual/por sistema externo.
 
 La aplicación usa el paquete `mongodb/laravel-mongodb` y el modelo de usuario compatible con MongoDB. Laravel Fortify continúa siendo responsable de la autenticación; los módulos 1.8 y 1.9 solo consumen la identidad autenticada.
 
@@ -60,9 +60,11 @@ composer install
 npm install
 ```
 
-Las dependencias del módulo QR se incluyen en `package.json`: `qrcode` genera los códigos en el navegador y
-`@zxing/library` lee códigos mediante la cámara. El backend reutiliza `mongodb/laravel-mongodb`; no es necesario
-añadir otro paquete de Composer para generar imágenes porque el QR se renderiza en Vue.
+La dependencia del módulo QR se incluye en `package.json`: `qrcode` genera los códigos en el navegador. El backend
+reutiliza `mongodb/laravel-mongodb`; no es necesario añadir otro paquete de Composer para generar imágenes porque
+el QR se renderiza en Vue. No se usa lectura por cámara (se quitó `@zxing/library`): la validación de un código
+QR la hace el sistema externo que lo escanea (lector de biblioteca, caja, torniquete, etc.) llamando al contrato
+`/api/v1/identity/qr-validate`, no el navegador del estudiante.
 
 Crea el archivo de entorno y genera la clave de la aplicación:
 
@@ -120,6 +122,31 @@ php artisan tinker --execute="DB::connection('mongodb')->command(['ping' => 1]);
 
 La instalación local de desarrollo no habilita autenticación en MongoDB. Para DataGrip utiliza `localhost`, puerto `27017`, autenticación `No authentication` y la base `campus_virtual`. En MongoDB, las tablas se representan como colecciones; la aplicación crea `users` y `sessions` cuando existen documentos.
 
+## Google Authenticator y autenticación 2FA
+
+La autenticación de dos factores utiliza TOTP estándar mediante Laravel Fortify y es compatible con Google Authenticator. No requiere una API, cuenta de servicio ni SDK de Google.
+
+Desde **Perfil**, el usuario puede:
+
+- Activar 2FA confirmando su contraseña.
+- Escanear el código QR `otpauth://` desde Google Authenticator o introducir la clave manualmente.
+- Confirmar el código TOTP de seis dígitos.
+- Consultar o regenerar códigos de recuperación.
+- Desactivar 2FA con confirmación de contraseña.
+
+Cuando 2FA está confirmado, el inicio de sesión solicita el código temporal en `/two-factor-challenge` y también permite utilizar un código de recuperación. El secreto TOTP y los códigos de recuperación no se exponen como props de Inertia ni se registran en logs.
+
+Para verificar esta funcionalidad:
+
+```bash
+php artisan route:list | Select-String two-factor
+php artisan test --filter=GoogleAuthenticatorTwoFactorTest
+```
+
+El QR de Google Authenticator es distinto de los QR de identidad del módulo 1.6: debe escanearse desde la aplicación autenticadora, no desde la cámara normal del teléfono.
+
+La instalación verificada utiliza PHP 8.4, Composer 2.10, Node.js 22, npm 10 y la extensión PHP `mongodb`. Las dependencias se instalan con `composer install` y `npm install`; después de crear `.env` y generar la clave, el frontend se valida con `npm run build`. Las migraciones y pruebas requieren que Podman y el contenedor `campus-mongo` estén activos.
+
 ## Ramas de desarrollo
 
 Este proyecto utiliza un flujo de Git con dos ramas principales:
@@ -168,15 +195,62 @@ npm run dev
 
 ## Módulos QR y dispositivos
 
-Con una sesión autenticada están disponibles:
+Con una sesión web autenticada están disponibles:
 
-- `/security/qr`: genera un QR dinámico de un solo uso y permite escanear/validar otro QR con la cámara.
-- `/security/devices`: vincula, consulta y desvincula dispositivos del usuario.
-- `POST /api/v1/identity/qr/generate`: genera un token QR para clientes API autenticados con Sanctum.
-- `POST /api/v1/identity/qr-validate`: valida un token, registra el resultado y consume los tokens dinámicos.
+- `GET /identidad/qr`: pantalla con el QR fijo de identificación y el QR dinámico (rota cada `QR_IDENTITY_TTL_SECONDS`).
+- `POST /identidad/qr/generar`: genera/rota el token QR dinámico del usuario autenticado.
+- `GET /identidad/qr/historial`: historial paginado de validaciones del usuario.
+- `POST /identidad/qr/simular-validacion`: simulador en pantalla del contrato de validación. **Solo visible/usable
+  para roles validadores** (`Role::VALIDATOR_ROLES`: bibliotecario, agente_soporte, cajero_negocio,
+  agente_recarga_retiro, admin) — un estudiante normal solo genera/consulta su propio QR, no valida el de otros.
+  Exige un `context_id` vigente (ver "Contextos de validación" abajo); limitado a `throttle:30,1`.
+- `GET /identidad/qr/contextos`, `POST /identidad/qr/contextos`, `POST /identidad/qr/contextos/{id}/cancelar`:
+  gestión de contextos de validación (ver abajo). Solo para roles validadores.
+- `GET /seguridad/dispositivos`: vincula, consulta y desvincula dispositivos del usuario.
 
-Las migraciones crean las colecciones MongoDB `devices`, `qr_tokens` y `qr_validations`, con índices para usuario,
-token y expiración. La cámara requiere permisos del navegador y, en producción, un contexto HTTPS.
+Para integración servidor-a-servidor (otros equipos/dominios), no para el navegador del estudiante:
+
+- `POST /api/v1/identity/qr-validate`: valida un código QR o corto, registra el resultado en auditoría y consume
+  los tokens dinámicos. Protegido con el middleware `oauth.service:identity.qr.validate` + `throttle:60,1` (OAuth
+  2.0 `client_credentials` propio del módulo 1.10 — **no** usa Laravel Sanctum, aunque el paquete esté en
+  `composer.json` como dependencia estándar de Breeze). Pedir `level=full` en el body además requiere que el
+  token de servicio tenga el scope `identity.qr.validate.full`.
+
+No existe generación de QR vía API para otros servicios: el QR siempre lo genera el propio estudiante desde su
+sesión web; otros dominios únicamente lo *validan*.
+
+Las migraciones crean las colecciones MongoDB `devices`, `qr_tokens`, `qr_validations` y `qr_validation_contexts`,
+con índices para usuario, código corto, expiración y autor. El escaneo es manual/por sistema externo (lector de
+biblioteca, caja, etc.); esta app web no abre la cámara del navegador para leer códigos.
+
+### Contextos de validación
+
+El `context` de una validación (ej. "Evento de Bienvenida") dejó de ser una lista fija de texto sin dueño ni
+vigencia. Ahora es un recurso real (`QrValidationContext`) que crea el propio validador — típicamente quien
+organiza el evento/turno — con nombre y **fecha/hora de cierre obligatoria**. Reglas:
+
+- Cualquier rol validador puede **crear** su contexto y **usar** un contexto activo creado por un colega (dos
+  bibliotecarios del mismo turno comparten "Turno tarde biblioteca").
+- Solo quien lo creó, o un `admin`, puede **cancelarlo** antes de tiempo (error de dedo al crearlo, evento
+  cancelado, etc.) — ver `QrValidationContextPolicy`.
+- Un contexto vencido (`ends_at` ya pasó) o cancelado deja de aparecer en el listado y `simular-validacion` lo
+  rechaza explícitamente (`422`, no un error genérico) si de todos modos se manda su id.
+- Esto es exclusivo de la ruta web (validadores humanos); el contrato de servicio-a-servicio
+  (`/api/v1/identity/qr-validate`) sigue aceptando `context` como texto libre, ya que ahí quien valida es un
+  servicio, no una persona que "organiza" nada.
+
+### Quién puede validar el QR de otra persona
+
+La identidad de "quién validó" (`validator_label` en `qr_validations`) ya no es texto libre que manda quien llama
+al endpoint: en la ruta web se calcula del lado del servidor a partir del usuario autenticado y su rol real
+(`User::validatorLabel()`); en la API se calcula a partir del `client_id` del servicio ya verificado por el token
+OAuth (`IdentityService::describeServiceValidator()`). El campo `note`/`nota` que sigue existiendo es solo un
+detalle físico opcional (ej. "Terminal 3"), nunca una identidad.
+
+`DemoAccountsSeeder` crea un cliente OAuth de prueba (`client_id=svc_demo_biblioteca`,
+`client_secret=demo-secret-biblioteca`) con los scopes `identity.qr.validate` y `identity.qr.validate.full` para
+poder probar el contrato real sin correr `php artisan oauth:client` a mano, además de un contexto de validación
+de ejemplo ya vigente para `martha.jimenez@servicios.com` (bibliotecaria demo).
 
 Para generar los recursos frontend de producción:
 
@@ -228,6 +302,21 @@ El publicador incluido se ejecuta con `php artisan events:publish`. Configura `E
 
 ## Cambios Recientes
 
+### Fusión de ramas (integración de mejoras_1.6_1.7 + cerrar-nfc-qr + google-authenticator)
+
+Se consolidaron en `main` las tres ramas que venían divergiendo desde la entrega del módulo 1:
+
+- **De `mejoras_1.6_1.7`:** `NfcCardPolicy` y `RolePolicy` (autorización real por rol), comando `security-events:prune` (retención de bitácora), índice en `qr_tokens.short_code`, endurecimiento de rutas (`role.context:admin` en alta/edición de NFC y en `roles.assign`), limpieza de rutas duplicadas/legacy, tests `NfcCardAuthorizationTest` y `RoleAssignmentTest`.
+- **De `cerrar-nfc-qr`:** reemplazo de tarjeta NFC (`NfcCardController::replace`, ruta `nfc-cards.replace`, campos `replacement_of_card_id`/`replaced_by_card_id`), contrato real `POST /api/v1/identity/qr-validate` (`QrController::validateQr`).
+- **De `google-authenticator`:** panel 2FA completo en Perfil (`TwoFactorAuthenticationForm.vue`), pantalla de desafío 2FA, corrección del conector por defecto en `config/database.php` (era `sqlite`, ahora `mongodb`), tests `GoogleAuthenticatorTwoFactorTest`.
+
+Conflictos resueltos manualmente durante la fusión:
+- `NfcCardController.php` y `QrController.php`: se combinaron ambas funcionalidades (autorización de `mejoras` + reemplazo/validación de `cerrar-nfc-qr`); se agregó `$this->authorize('updateStatus', ...)` al método `replace()`, que no lo traía porque esa rama se escribió antes de que existiera `NfcCardPolicy`.
+- `routes/web.php`: se tomó como base la versión endurecida de `mejoras` (sin rutas legacy duplicadas) y se le sumó la ruta de reemplazo de `cerrar-nfc-qr`, protegida con el mismo middleware `role.context:admin`.
+- `app/Models/User.php`: el auto-merge de git había dejado **dos** definiciones del método `displayIdentity()` (una de cada rama), lo cual habría sido un error fatal de PHP por redeclaración. Se eliminó la versión simple de `cerrar-nfc-qr` y se conservó la versión de `mejoras` (con enmascarado de nombre para QR).
+
+Pendiente tras esta fusión (no resuelto aquí, ver sección "Estado del proyecto"): módulos 1.8 y 1.9 siguen sin persistencia real.
+
 ### Versión 0.2.0-dev (7 de septiembre de 2026)
 
 #### Entrega actual del módulo 1
@@ -239,7 +328,7 @@ El publicador incluido se ejecuta con `php artisan events:publish`. Configura `E
 - **Módulos 1.8 y 1.9:** interfaz y contrato API disponibles; la persistencia de condición, consentimientos y preferencias continúa pendiente.
 - **Integración entre servicios:** OAuth 2.0 `client_credentials`, JWT, scopes y middleware Bearer.
 - **Eventos de dominio:** eventos versionados, outbox MongoDB idempotente y comando `events:publish` con reintentos.
-- **Calidad:** 29 pruebas correctas, 71 aserciones y build frontend exitoso.
+- **Calidad:** 29 pruebas correctas, 71 aserciones y build frontend exitoso (antes de esta fusión; falta re-ejecutar suite completa).
 
 #### Documentación
 - La documentación formal del módulo 1 se encuentra en `/home/darkstar/IS/documentacion/terminada/modulo-1`.
@@ -278,10 +367,20 @@ El publicador incluido se ejecuta con `php artisan events:publish`. Configura `E
 - [x] Módulo 1.9: Consentimientos y preferencias de comunicación (API + UI).
 - [x] Identidad visual: Logo, colores institucionales, rediseño de pantallas.
 - [x] Endpoints API REST v1 documentados y funcionales.
-- [x] Pruebas automatizadas contra MongoDB: 29 pruebas correctas.
-- [x] Integración de autenticación inter-servicios OAuth 2.0.
+- [x] Autorización real por policy en NFC (`NfcCardPolicy`) y roles (`RolePolicy`).
+- [x] Catálogo de 18 roles alineado a la Matriz Operativa de Roles, Permisos y Restricciones.
+- [x] Autorización real por policy en validación de QR (`QrValidationPolicy`) + scope OAuth dedicado en la API.
+- [x] Contextos de validación con vigencia y cancelación (`QrValidationContext` / `QrValidationContextPolicy`).
+- [x] Rate limiting en `/api/v1/identity/qr-validate` (antes solo dependía del scope OAuth, sin límite de tasa propio).
+- [x] Pruebas mecánicas de QR: expiración, consumo, revocación, firma inválida, código corto (antes 0 pruebas del núcleo técnico).
+- [x] Reemplazo de tarjeta NFC (ciclo de vida de credenciales).
+- [x] 2FA con Google Authenticator (TOTP) end-to-end.
+- [x] Retención automática de bitácora de seguridad (`security-events:prune`).
+- [ ] Pruebas automatizadas completas contra MongoDB para todos los módulos.
+- [ ] Integración de autenticación inter-servicios OAuth 2.0.
 - [ ] Servicios y contratos de integración con los demás equipos.
-- [x] Contratos de eventos versionados y outbox MongoDB.
+- [ ] Publicación de eventos para cambios de estado/consentimientos.
+- [ ] Persistencia real de los módulos 1.8 y 1.9 (hoy devuelven datos simulados).
 
 ### Notas de integración
 
@@ -290,7 +389,6 @@ El publicador incluido se ejecuta con `php artisan events:publish`. Configura `E
 - Los catálogos e índices de 1.1 se inicializan con `php artisan db:seed --class=StudentCatalogSeeder`.
 - La importación CSV valida todas las filas antes de escribir. El contenedor local MongoDB usa el replica set `rs0`, habilitando transacciones multi-documento para atomicidad estricta.
 - Los módulos 1.8 y 1.9 aún usan datos simulados y deben conectarse a `StudentProfile` y sus eventos cuando se cierre el contrato de dominio.
-- La rama de entrega del equipo es `modulo-1`; `develop` conserva la integración continua y `main` permanece estable.
 
 ## Repositorio
 

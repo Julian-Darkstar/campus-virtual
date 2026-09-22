@@ -26,6 +26,7 @@ class SecurityEvent extends Model
         'ip_address',
         'user_agent',
         'metadata',
+        'correlation_id',
         'occurred_at',
     ];
 

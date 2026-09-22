@@ -6,8 +6,10 @@ use App\Models\Device;
 use App\Models\QrToken;
 use App\Models\QrValidation;
 use App\Models\SecurityEvent;
+use App\Models\ServiceClient;
 use App\Models\User;
 use App\Models\UserSession;
+use App\Contracts\IdentityServiceInterface;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 
@@ -20,8 +22,13 @@ use Illuminate\Support\Str;
  * expuesto en routes/api.php (/api/v1/identity/*) cuando se construya
  * el modulo 1.10.
  */
-class IdentityService
+class IdentityService implements IdentityServiceInterface
 {
+    public function __construct(
+        private readonly StudentStatusService $studentStatus,
+        private readonly CredentialService $credentials,
+    ) {}
+
     /**
      * ---------------------------------------------------------------
      * Modulo 1.6 - Identidad QR
@@ -44,15 +51,18 @@ class IdentityService
             ->update(['revoked_at' => now()]);
 
         $code = QrToken::generateCode();
-
+        $shortCode = $this->generateUniqueShortCode();
+        $purpose ??= 'identity';
         $token = QrToken::create([
             'user_id' => (string) $user->_id,
-            'code' => $code,
-            'short_code' => $this->generateUniqueShortCode(),
+            'code_hash' => QrToken::hashPresentedCode($code),
+            'short_code_hash' => QrToken::hashShortCode($shortCode),
             'type' => 'dynamic',
             'purpose' => $purpose,
             'expires_at' => now()->addSeconds($ttl),
         ]);
+        $token->setAttribute('code', $code);
+        $token->setAttribute('short_code', $shortCode);
 
         SecurityEvent::log([
             'user_id' => (string) $user->_id,
@@ -78,16 +88,42 @@ class IdentityService
             ->first();
 
         if ($existing) {
+            // Tokens creados por versiones anteriores pueden conservar
+            // solamente code_hash (el secreto no se puede reconstruir
+            // desde un hash). Si encontramos uno de esos tokens, lo
+            // renovamos en el mismo documento con un secreto cifrado
+            // nuevo. Esto evita que una cuenta ya existente provoque
+            // signCode(null) al abrir /identidad/qr.
+            $existingCode = $existing->code;
+
+            if (is_string($existingCode) && $existingCode !== '') {
+                return $existing;
+            }
+
+            $code = QrToken::generateCode();
+            $existing->code_hash = QrToken::hashPresentedCode($code);
+            $existing->code_encrypted = encrypt($code);
+            $existing->expires_at = now()->addDay();
+            $existing->consumed_at = null;
+            $existing->revoked_at = null;
+            $existing->save();
+            $existing->setAttribute('code', $code);
+
             return $existing;
         }
 
-        return QrToken::create([
+        $code = QrToken::generateCode();
+        $token = QrToken::create([
             'user_id' => (string) $user->_id,
-            'code' => QrToken::generateCode(),
+            'code_hash' => QrToken::hashPresentedCode($code),
+            'code_encrypted' => encrypt($code),
             'type' => 'identification',
-            'purpose' => 'identidad-estudiantil',
+            'purpose' => 'identity',
             'expires_at' => now()->addDay(),
         ]);
+        $token->setAttribute('code', $code);
+
+        return $token;
     }
 
     /**
@@ -123,7 +159,10 @@ class IdentityService
     {
         do {
             $shortCode = (string) random_int(100000, 999999);
-            $exists = QrToken::where('short_code', $shortCode)
+            $exists = QrToken::where(function ($query) use ($shortCode) {
+                    $query->where('short_code_hash', QrToken::hashShortCode($shortCode))
+                        ->orWhere('short_code', $shortCode);
+                })
                 ->where('type', 'dynamic')
                 ->whereNull('consumed_at')
                 ->whereNull('revoked_at')
@@ -191,21 +230,25 @@ class IdentityService
         ?string $ip,
         ?string $validatorLabel = null,
         string $level = 'basic',
+        ?string $contextId = null,
+        ?string $purpose = null,
+        ?string $correlationId = null,
     ): array {
         $parsed = $this->parseScannedInput($input);
 
         if ($parsed['signature_valid'] === false) {
-            $this->logValidation(null, null, $validatedBy, $validatorLabel, 'invalid_signature', $context, $ip);
+            $this->logValidation(null, null, $validatedBy, $validatorLabel, 'invalid_signature', $context, $ip, $contextId, $purpose, $correlationId);
 
-            return ['ok' => false, 'result' => 'invalid_signature', 'identity' => null];
+            return ['ok'=>false,'result'=>'invalid_signature','error_code'=>'QR_INVALID_SIGNATURE','identity'=>null,'credential'=>null,'student'=>null,'authorization_context'=>['purpose'=>$purpose ?: 'identity','context'=>$context],'request_id'=>$correlationId];
         }
 
-        $token = QrToken::where('code', $parsed['code'])->first();
-
+        $token = QrToken::where('code_hash', QrToken::hashPresentedCode($parsed['code']))->first();
+        $token ??= QrToken::where('code', $parsed['code'])->first();
         if (! $token && $parsed['is_short_code']) {
-            $token = QrToken::where('short_code', $parsed['code'])
-                ->where('type', 'dynamic')
-                ->first();
+            $token = QrToken::where(function ($query) use ($parsed) {
+                    $query->where('short_code_hash', QrToken::hashShortCode($parsed['code']))
+                        ->orWhere('short_code', $parsed['code']);
+                })->where('type', 'dynamic')->first();
         }
 
         $result = match (true) {
@@ -215,6 +258,10 @@ class IdentityService
             $token->isExpired() => 'expired',
             default => 'valid',
         };
+
+        $expectedPurpose = $purpose ?: 'identity';
+        $tokenPurpose = $token?->purpose ?: 'identity';
+        if ($result === 'valid' && $tokenPurpose !== $expectedPurpose) $result = 'invalid_purpose';
 
         // Consumo atomico: solo el primer request que llega a marcar
         // consumed_at "gana"; si otro ya lo hizo entre el match() de
@@ -231,17 +278,36 @@ class IdentityService
             }
         }
 
-        $this->logValidation($token, $token?->user_id, $validatedBy, $validatorLabel, $result, $context, $ip);
+        $this->logValidation($token, $token?->user_id, $validatedBy, $validatorLabel, $result, $context, $ip, $contextId, $expectedPurpose, $correlationId);
 
         if ($result === 'valid') {
-            return [
-                'ok' => true,
-                'result' => 'valid',
-                'identity' => $token->user->displayIdentity($level),
-            ];
+            $student = $this->studentStatus->resolve($token->user);
+            $credential = $this->credentials->resolveQr($token);
+            if (!$this->studentStatus->isOperationAllowed($student)) {
+                $blocked = $student['status'] === 'suspended' ? 'student_suspended' : 'student_inactive';
+                return ['ok'=>false,'result'=>$blocked,'error_code'=>strtoupper($blocked),'identity'=>null,'credential'=>$credential,'student'=>$student,'authorization_context'=>['purpose'=>$expectedPurpose,'context'=>$context],'request_id'=>$correlationId];
+            }
+            return ['ok'=>true,'result'=>'valid','error_code'=>null,'identity'=>array_merge($token->user->displayIdentity($level),['student_id'=>$student['student_id'],'status'=>$student['status']]),'student'=>$student,'credential'=>$credential,'authorization_context'=>['purpose'=>$expectedPurpose,'context'=>$context],'request_id'=>$correlationId];
         }
 
-        return ['ok' => false, 'result' => $result, 'identity' => null];
+        return ['ok'=>false,'result'=>$result,'error_code'=>$this->errorCodeForResult($result),'identity'=>null,'credential'=>$token?$this->credentials->resolveQr($token):null,'student'=>$token?->user?$this->studentStatus->resolve($token->user):null,'authorization_context'=>['purpose'=>$expectedPurpose,'context'=>$context],'request_id'=>$correlationId];
+    }
+
+    /**
+     * Etiqueta legible de qué SERVICIO externo (no un User humano)
+     * validó, a partir del client_id ya verificado por
+     * ValidateServiceToken (nunca de texto libre enviado en el body).
+     * Se usa en validateQr() (contrato /api/v1/identity/qr-validate).
+     */
+    public function describeServiceValidator(?string $oauthClientId): ?string
+    {
+        if (! $oauthClientId) {
+            return null;
+        }
+
+        $name = ServiceClient::where('client_id', $oauthClientId)->value('name');
+
+        return $name ? "Servicio: {$name}" : "Servicio: {$oauthClientId}";
     }
 
     private function logValidation(
@@ -252,6 +318,9 @@ class IdentityService
         string $result,
         ?string $context,
         ?string $ip,
+        ?string $contextId = null,
+        ?string $purpose = null,
+        ?string $correlationId = null,
     ): void {
         QrValidation::create([
             'qr_token_id' => $token ? (string) $token->_id : null,
@@ -260,16 +329,35 @@ class IdentityService
             'validator_label' => $validatorLabel,
             'result' => $result,
             'context' => $context,
+            'context_id' => $contextId,
+            'purpose' => $purpose,
+            'correlation_id' => $correlationId,
             'ip_address' => $ip,
         ]);
 
+        $eventType = match ($result) {
+            'valid' => 'qr_validated',
+            'expired' => 'qr_expired',
+            'consumed' => 'qr_reused',
+            'revoked' => 'qr_revoked',
+            default => 'qr_validation_failed',
+        };
+
         SecurityEvent::log([
             'user_id' => $userId,
-            'type' => $result === 'valid' ? 'qr_validated' : 'qr_validation_failed',
+            'type' => $eventType,
             'severity' => $result === 'valid' ? 'info' : 'warning',
             'ip_address' => $ip,
-            'metadata' => ['result' => $result, 'context' => $context, 'validator_label' => $validatorLabel],
+            'correlation_id' => $correlationId,
+            'metadata' => ['result'=>$result,'context'=>$context,'purpose'=>$purpose,'validator_label'=>$validatorLabel],
         ]);
+    }
+
+    private function errorCodeForResult(string $result): string
+    {
+        return match ($result) {
+            'invalid_signature'=>'QR_INVALID_SIGNATURE','not_found'=>'QR_NOT_FOUND','revoked'=>'QR_REVOKED','expired'=>'QR_EXPIRED','consumed'=>'QR_ALREADY_USED','invalid_purpose'=>'QR_INVALID_PURPOSE','student_suspended'=>'STUDENT_SUSPENDED','student_inactive'=>'STUDENT_INACTIVE',default=>strtoupper($result),
+        };
     }
 
     /**
@@ -310,9 +398,9 @@ class IdentityService
             ->where('fingerprint', $fingerprint)
             ->first();
 
-        $isNewDevice = $device === null;
+        $isNewDevice = $device === null || $device->revoked_at !== null;
 
-        if (! $device) {
+        if (! $device || $device->revoked_at !== null) {
             $device = new Device([
                 'user_id' => (string) $user->_id,
                 'fingerprint' => $fingerprint,
@@ -348,6 +436,7 @@ class IdentityService
                 'user_id' => (string) $user->_id,
                 'device_id' => (string) $device->_id,
                 'session_id' => (string) $session->_id,
+                'correlation_id' => $request->attributes->get('correlation_id'),
                 'type' => 'login_success',
                 'severity' => 'info',
                 'ip_address' => $request->ip(),
@@ -359,6 +448,7 @@ class IdentityService
                     'user_id' => (string) $user->_id,
                     'device_id' => (string) $device->_id,
                     'session_id' => (string) $session->_id,
+                    'correlation_id' => $request->attributes->get('correlation_id'),
                     'type' => 'new_device',
                     'severity' => 'warning',
                     'ip_address' => $request->ip(),
@@ -414,7 +504,7 @@ class IdentityService
         }
     }
 
-    public function revokeSession(User $user, UserSession $session, string $reason = 'manual'): void
+    public function revokeSession(User $user, UserSession $session, string $reason = 'manual', ?string $correlationId = null): void
     {
         abort_unless($session->user_id === (string) $user->_id, 403);
 
@@ -424,6 +514,7 @@ class IdentityService
             'user_id' => (string) $user->_id,
             'device_id' => $session->device_id,
             'session_id' => (string) $session->_id,
+            'correlation_id' => $correlationId ?? request()->attributes->get('correlation_id'),
             'type' => 'session_revoked',
             'severity' => 'info',
             'ip_address' => $session->ip_address,
@@ -472,11 +563,12 @@ class IdentityService
         SecurityEvent::log([
             'user_id' => (string) $user->_id,
             'device_id' => (string) $device->_id,
+            'correlation_id' => request()->attributes->get('correlation_id'),
             'type' => 'device_removed',
             'severity' => 'info',
         ]);
 
-        $device->delete();
+        $device->update(['revoked_at'=>now(),'is_trusted'=>false]);
     }
 
     private function guessDeviceName(Request $request): string

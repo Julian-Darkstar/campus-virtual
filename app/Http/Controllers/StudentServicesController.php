@@ -2,94 +2,129 @@
 
 namespace App\Http\Controllers;
 
-use App\Events\StudentConsentChanged;
+use App\Models\StudentProfile;
+use App\Services\StudentPrivacyService;
+use App\Services\StudentStatusService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response;
 
 class StudentServicesController extends Controller
 {
+    public function __construct(
+        private readonly StudentStatusService $statusService,
+        private readonly StudentPrivacyService $privacyService,
+    ) {}
+
     public function index(Request $request): Response
     {
-        $student = $this->student($request);
+        $profile = $request->user()?->studentProfile;
 
         return Inertia::render('StudentServices/Index', [
-            'student' => $student,
-            'consents' => $this->consentItems(),
-            'preferences' => $this->preferenceValues(),
+            'student' => $profile
+                ? $this->statusService->resolve($request->user())
+                : [
+                    'known' => false,
+                    'student_id' => null,
+                    'user_id' => (string) $request->user()->getKey(),
+                    'name' => $request->user()->name,
+                    'enrollment' => null,
+                    'program' => null,
+                    'semester' => null,
+                    'campus' => null,
+                    'status' => null,
+                    'status_label' => null,
+                    'effective_from' => null,
+                    'restrictions' => [],
+                ],
+            'consents' => $profile ? $this->privacyService->consents($profile) : [],
+            'preferences' => $profile ? $this->privacyService->preferences($profile) : [
+                'email' => true,
+                'push' => true,
+                'sms' => false,
+            ],
         ]);
     }
 
     public function status(Request $request, string $studentId): JsonResponse
     {
-        return $this->success($this->student($request, $studentId));
+        return $this->success($this->statusService->resolveByIdentifier($studentId));
     }
 
     public function statusHistory(Request $request, string $studentId): JsonResponse
     {
+        $profile = $this->statusService->profileByIdentifier($studentId);
+
+        if (! $profile) {
+            return $this->success(['student_id' => $studentId, 'items' => []]);
+        }
+
         return $this->success([
-            'student_id' => $studentId,
-            'items' => [
-                [
-                    'status' => 'active',
-                    'reason' => 'initial_registration',
-                    'effective_from' => '2026-01-15T00:00:00Z',
-                    'recorded_at' => '2026-01-15T00:00:00Z',
-                ],
-            ],
+            'student_id' => (string) $profile->getKey(),
+            'items' => $this->statusService->history($profile),
         ]);
     }
 
     public function consents(Request $request, string $studentId): JsonResponse
     {
+        $profile = $this->profileOrFail($studentId);
+
         return $this->success([
-            'student_id' => $studentId,
-            'items' => $this->consentItems(),
+            'student_id' => (string) $profile->getKey(),
+            'items' => $this->privacyService->consents($profile),
         ]);
     }
 
     public function acceptConsent(Request $request, string $studentId): JsonResponse
     {
         $validated = $request->validate([
-            'consent_id' => ['required', 'string'],
+            'consent_id' => ['required', 'string', Rule::in(array_keys(StudentPrivacyService::CONSENTS))],
             'consent_version' => ['required', 'string'],
         ]);
 
-        StudentConsentChanged::dispatch(
-            $studentId,
+        $profile = $this->profileOrFail($studentId);
+        $this->assertCanMutateStudent($request, $profile);
+
+        $record = $this->privacyService->accept(
+            $profile,
             $validated['consent_id'],
-            'accepted',
             $validated['consent_version'],
-            $request->user()?->getKey() ? (string) $request->user()->getKey() : null,
+            $request->user(),
         );
 
         return $this->success([
-            'student_id' => $studentId,
-            'consent_id' => $validated['consent_id'],
-            'consent_version' => $validated['consent_version'],
-            'status' => 'accepted',
-            'accepted_at' => now()->toISOString(),
+            'student_id' => (string) $profile->getKey(),
+            'consent_id' => $record->consent_id,
+            'consent_version' => $record->version,
+            'status' => $record->status,
+            'accepted_at' => optional($record->accepted_at)->toISOString(),
         ], 201);
     }
 
-    public function revokeConsent(string $studentId, string $consentId): JsonResponse
+    public function revokeConsent(Request $request, string $studentId, string $consentId): JsonResponse
     {
-        StudentConsentChanged::dispatch($studentId, $consentId, 'revoked', 'current');
+        $profile = $this->profileOrFail($studentId);
+        $this->assertCanMutateStudent($request, $profile);
+
+        $record = $this->privacyService->revoke($profile, $consentId, $request->user());
 
         return $this->success([
-            'student_id' => $studentId,
-            'consent_id' => $consentId,
-            'status' => 'revoked',
-            'revoked_at' => now()->toISOString(),
+            'student_id' => (string) $profile->getKey(),
+            'consent_id' => $record->consent_id,
+            'status' => $record->status,
+            'revoked_at' => optional($record->revoked_at)->toISOString(),
         ]);
     }
 
     public function preferences(Request $request, string $studentId): JsonResponse
     {
+        $profile = $this->profileOrFail($studentId);
+
         return $this->success([
-            'student_id' => $studentId,
-            'preferences' => $this->preferenceValues(),
+            'student_id' => (string) $profile->getKey(),
+            'preferences' => $this->privacyService->preferences($profile),
         ]);
     }
 
@@ -101,69 +136,39 @@ class StudentServicesController extends Controller
             'sms' => ['sometimes', 'boolean'],
         ]);
 
+        $profile = $this->profileOrFail($studentId);
+        $this->assertCanMutateStudent($request, $profile);
+        $record = $this->privacyService->updatePreferences($profile, $validated, $request->user());
+
         return $this->success([
-            'student_id' => $studentId,
-            'preferences' => array_merge($this->preferenceValues(), $validated),
-            'updated_at' => now()->toISOString(),
+            'student_id' => (string) $profile->getKey(),
+            'preferences' => [
+                'email' => (bool) $record->email,
+                'push' => (bool) $record->push,
+                'sms' => (bool) $record->sms,
+            ],
+            'updated_at' => optional($record->updated_at)->toISOString(),
         ]);
     }
 
-    private function student(Request $request, ?string $studentId = null): array
+    private function profileOrFail(string $studentId): StudentProfile
     {
-        return [
-            'student_id' => $studentId ?? 'stu_demo_001',
-            'name' => $request->user()?->name ?? 'Estudiante de demostración',
-            'enrollment' => 'CV-2026-001',
-            'program' => 'Ingeniería de Software',
-            'semester' => 4,
-            'campus' => 'Campus principal',
-            'status' => 'active',
-            'status_label' => 'Activo',
-            'effective_from' => '2026-01-15T00:00:00Z',
-            'restrictions' => [],
-        ];
+        return $this->statusService->profileByIdentifier($studentId)
+            ?? abort(404, 'El estudiante no existe.');
     }
 
-    private function consentItems(): array
+    private function assertCanMutateStudent(Request $request, StudentProfile $profile): void
     {
-        return [
-            [
-                'id' => 'terms',
-                'name' => 'Términos de uso',
-                'description' => 'Reglas de uso de Campus Virtual.',
-                'version' => '2026.1',
-                'required' => true,
-                'status' => 'accepted',
-                'accepted_at' => '2026-01-15T10:30:00Z',
-            ],
-            [
-                'id' => 'privacy',
-                'name' => 'Aviso de privacidad',
-                'description' => 'Tratamiento de datos personales y académicos.',
-                'version' => '2026.1',
-                'required' => true,
-                'status' => 'accepted',
-                'accepted_at' => '2026-01-15T10:30:00Z',
-            ],
-            [
-                'id' => 'marketing',
-                'name' => 'Comunicaciones institucionales',
-                'description' => 'Novedades, eventos y beneficios del campus.',
-                'version' => '2026.1',
-                'required' => false,
-                'status' => 'pending',
-                'accepted_at' => null,
-            ],
-        ];
-    }
+        // Navegación web: un estudiante solo puede modificar su propia
+        // privacidad. Los administradores/gestores podrán operar sobre
+        // perfiles desde el módulo de administración cuando corresponda.
+        if ($request->user()) {
+            $user = $request->user();
+            $isOwner = (string) $profile->user_id === (string) $user->getKey();
+            $isManager = $user->can('update', $profile);
 
-    private function preferenceValues(): array
-    {
-        return [
-            'email' => true,
-            'push' => true,
-            'sms' => false,
-        ];
+            abort_unless($isOwner || $isManager, 403);
+        }
     }
 
     private function success(array $data, int $status = 200): JsonResponse
@@ -171,7 +176,7 @@ class StudentServicesController extends Controller
         return response()->json([
             'data' => $data,
             'meta' => [
-                'request_id' => request()->header('X-Request-Id', (string) str()->uuid()),
+                'request_id' => request()->attributes->get('correlation_id', request()->header('X-Request-Id', (string) str()->uuid())),
                 'api_version' => 'v1',
             ],
         ], $status);

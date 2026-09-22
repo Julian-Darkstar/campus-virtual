@@ -79,6 +79,10 @@ function revokeOthers() {
     runSensitive('post', route('security.sessions.revoke-others'));
 }
 
+function revokeAll() {
+    runSensitive('post', route('security.sessions.revoke-all'));
+}
+
 function toggleTrust(device) {
     runSensitive('post', route('security.devices.trust', device.id), { trusted: !device.is_trusted });
 }
@@ -111,6 +115,9 @@ const eventLabels = {
     qr_validation_failed: 'Intento de validación de QR fallido',
     reauth_success: 'Contraseña confirmada (reautenticación)',
     reauth_failed: 'Intento de reautenticación fallido',
+    qr_expired: 'QR expirado',
+    qr_reused: 'QR reutilizado',
+    qr_revoked: 'QR revocado',
 };
 </script>
 
@@ -124,12 +131,20 @@ const eventLabels = {
                     <p class="text-xs font-bold uppercase tracking-[0.22em] text-[#0284C7]">Módulo 1.7</p>
                     <h2 class="mt-1 text-2xl font-bold tracking-tight text-[#00338D]">Dispositivos y sesiones confiables</h2>
                 </div>
-                <button
-                    @click="revokeOthers"
-                    class="rounded-lg border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-600 transition hover:border-[#0284C7] hover:text-[#0284C7]"
-                >
-                    Cerrar todas las demás sesiones
-                </button>
+                <div class="flex flex-wrap gap-2">
+                    <button
+                        @click="revokeOthers"
+                        class="rounded-lg border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-600 transition hover:border-[#0284C7] hover:text-[#0284C7]"
+                    >
+                        Cerrar las demás sesiones
+                    </button>
+                    <button
+                        @click="revokeAll"
+                        class="rounded-lg border border-rose-200 px-4 py-2 text-xs font-semibold text-rose-600 transition hover:bg-rose-50"
+                    >
+                        Cerrar todas excepto esta
+                    </button>
+                </div>
             </div>
         </template>
 
@@ -164,6 +179,7 @@ const eventLabels = {
                                 <div class="flex flex-col items-end gap-2">
                                     <span v-if="device.is_trusted" class="rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-bold text-emerald-700">Confiable</span>
                                     <span v-else class="rounded-full bg-amber-50 px-2.5 py-1 text-[11px] font-bold text-amber-700">No confiable</span>
+                                    <span v-if="device.status === 'revoked'" class="rounded-full bg-rose-50 px-2.5 py-1 text-[11px] font-bold text-rose-700">Revocado</span>
                                     <button @click="toggleTrust(device)" class="text-xs font-semibold text-[#0284C7] hover:underline">
                                         {{ device.is_trusted ? 'Quitar confianza' : 'Marcar como confiable' }}
                                     </button>

@@ -35,6 +35,7 @@ class EnsureSessionIsActive
                 SecurityEvent::log([
                     'user_id' => $userId,
                     'session_id' => $cdSessionId,
+                    'correlation_id' => $request->attributes->get('correlation_id'),
                     'type' => 'session_forced_logout',
                     'severity' => 'warning',
                     'ip_address' => $request->ip(),

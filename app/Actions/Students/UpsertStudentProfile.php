@@ -54,6 +54,15 @@ class UpsertStudentProfile
                 'changed_at' => now(),
             ]);
         }
+
+        // Matriz de roles: "Estudiante (Rol Base Default) — Activación:
+        // asignación automática al validar matrícula activa". Se asigna
+        // aquí (no en el registro/Fortify) porque la matrícula activa es
+        // justo lo que este Action valida; assignRole() ya es idempotente
+        // por sí mismo si el usuario ya tiene el rol.
+        if ($nextStatus === StudentStatus::Active) {
+            $student->assignRole(\App\Models\Role::ESTUDIANTE);
+        }
         if ($newPhotoPath && $oldPhotoPath) {
             Storage::disk('public')->delete($oldPhotoPath);
         }
