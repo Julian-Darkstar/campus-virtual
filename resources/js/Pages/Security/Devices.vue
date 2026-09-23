@@ -6,8 +6,29 @@ import { ref } from 'vue';
 const props = defineProps({
     devices: { type: Array, default: () => [] },
     events: { type: Array, default: () => [] },
+    eventsPageSize: { type: Number, default: 20 },
     reauthValidMinutes: { type: Number, default: 5 },
+    maxActiveSessions: { type: Number, default: 5 },
 });
+
+const events = ref(props.events);
+const eventsOffset = ref(props.events.length);
+const eventsHasMore = ref(props.events.length >= props.eventsPageSize);
+const eventsLoading = ref(false);
+
+async function loadMoreEvents() {
+    eventsLoading.value = true;
+    try {
+        const { data } = await window.axios.get(route('security.events'), {
+            params: { offset: eventsOffset.value },
+        });
+        events.value = [...events.value, ...data.items];
+        eventsOffset.value = data.next_offset;
+        eventsHasMore.value = data.has_more;
+    } finally {
+        eventsLoading.value = false;
+    }
+}
 
 // --- Reautenticación para acciones sensibles (Módulo 1.7) ---
 const showReauth = ref(false);
@@ -39,27 +60,34 @@ async function confirmReauth() {
     }
 }
 
-async function runSensitive(url, payload = {}) {
+async function runSensitive(method, url, payload = {}) {
     try {
-        await window.axios.post(url, payload);
+        await window.axios({ method, url, data: payload });
         router.reload({ only: ['devices', 'events'] });
     } catch (e) {
         if (e.response?.status === 428) {
-            requestReauth(() => runSensitive(url, payload));
+            requestReauth(() => runSensitive(method, url, payload));
         }
     }
 }
 
 function revoke(sessionId) {
-    runSensitive(route('security.sessions.revoke', sessionId));
+    runSensitive('post', route('security.sessions.revoke', sessionId));
 }
 
 function revokeOthers() {
-    runSensitive(route('security.sessions.revoke-others'));
+    runSensitive('post', route('security.sessions.revoke-others'));
 }
 
 function toggleTrust(device) {
-    runSensitive(route('security.devices.trust', device.id), { trusted: !device.is_trusted });
+    runSensitive('post', route('security.devices.trust', device.id), { trusted: !device.is_trusted });
+}
+
+function removeDevice(device) {
+    if (!confirm(`¿Eliminar "${device.device_name}"? Se cerrará cualquier sesión activa en ese dispositivo.`)) {
+        return;
+    }
+    runSensitive('delete', route('security.devices.destroy', device.id));
 }
 
 const severityStyles = {
@@ -74,8 +102,10 @@ const eventLabels = {
     new_device: 'Nuevo dispositivo detectado',
     session_revoked: 'Sesión revocada',
     session_forced_logout: 'Sesión cerrada de forma remota',
+    session_limit_exceeded: 'Sesión antigua cerrada por límite de sesiones activas',
     device_trusted: 'Dispositivo marcado como confiable',
     device_untrusted: 'Dispositivo marcado como no confiable',
+    device_removed: 'Dispositivo eliminado',
     qr_generated: 'QR de identidad generado',
     qr_validated: 'QR validado correctamente',
     qr_validation_failed: 'Intento de validación de QR fallido',
@@ -107,7 +137,8 @@ const eventLabels = {
             <div class="mx-auto max-w-6xl">
                 <p class="mb-6 max-w-2xl text-sm text-slate-500">
                     Administra desde dónde ha ingresado tu cuenta y revoca el acceso a cualquier dispositivo que ya no
-                    reconozcas.
+                    reconozcas. Como máximo se permiten {{ maxActiveSessions }} sesiones activas a la vez; si abres una
+                    nueva y ya alcanzaste el límite, la más antigua se cierra automáticamente.
                 </p>
 
                 <div class="grid grid-cols-1 gap-6 lg:grid-cols-3">
@@ -119,7 +150,10 @@ const eventLabels = {
                                         🖥
                                     </div>
                                     <div>
-                                        <p class="font-bold text-slate-800">{{ device.device_name }}</p>
+                                        <p class="flex items-center gap-2 font-bold text-slate-800">
+                                            {{ device.device_name }}
+                                            <span v-if="device.is_new" class="rounded-full bg-[#0284C7] px-2 py-0.5 text-[10px] font-bold text-white">Nuevo</span>
+                                        </p>
                                         <p class="text-xs text-slate-500">
                                             {{ device.platform }} · {{ device.browser }} · última vez: {{ device.last_seen_at }}
                                         </p>
@@ -132,6 +166,9 @@ const eventLabels = {
                                     <span v-else class="rounded-full bg-amber-50 px-2.5 py-1 text-[11px] font-bold text-amber-700">No confiable</span>
                                     <button @click="toggleTrust(device)" class="text-xs font-semibold text-[#0284C7] hover:underline">
                                         {{ device.is_trusted ? 'Quitar confianza' : 'Marcar como confiable' }}
+                                    </button>
+                                    <button @click="removeDevice(device)" class="text-xs font-semibold text-rose-600 hover:underline">
+                                        Eliminar dispositivo
                                     </button>
                                 </div>
                             </div>
@@ -189,6 +226,14 @@ const eventLabels = {
                                 Sin eventos registrados todavía.
                             </li>
                         </ul>
+                        <button
+                            v-if="eventsHasMore"
+                            @click="loadMoreEvents"
+                            class="mt-4 w-full rounded-lg border border-slate-200 py-2 text-xs font-semibold text-slate-600 transition hover:border-[#0284C7] hover:text-[#0284C7] disabled:opacity-50"
+                            :disabled="eventsLoading"
+                        >
+                            {{ eventsLoading ? 'Cargando…' : 'Cargar más' }}
+                        </button>
                     </div>
                 </div>
             </div>

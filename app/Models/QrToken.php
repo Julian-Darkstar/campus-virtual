@@ -25,11 +25,25 @@ class QrToken extends Model
     protected $fillable = [
         'user_id',
         'code',
+        'code_hash',
+        'code_encrypted',
+        'short_code',
+        'short_code_hash',
+        'short_code_claimed',
         'type',
         'purpose',
         'expires_at',
         'consumed_at',
         'revoked_at',
+    ];
+
+    protected $hidden = [
+        'code',
+        'short_code',
+        'code_hash',
+        'short_code_hash',
+        'short_code_claimed',
+        'code_encrypted',
     ];
 
     protected $casts = [

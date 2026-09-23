@@ -7,6 +7,14 @@ const props = defineProps({
         type: Array,
         default: () => [],
     },
+    canManage: {
+        type: Boolean,
+        default: false,
+    },
+    availableTransitions: {
+        type: Object,
+        default: () => ({}),
+    },
 })
 
 const page = usePage()
@@ -16,6 +24,8 @@ const selectedCard = ref(null)
 
 // Nuevo estado seleccionado
 const selectedStatus = ref('')
+const reportingLost = ref(false)
+const processing = ref(false)
 
 // Motivo del cambio
 const reason = ref('')
@@ -35,9 +45,10 @@ const statusLabels = {
 }
 
 // Abrir modal para cambiar estado
-const openStatusModal = (card, status) => {
+const openStatusModal = (card, status, lost = false) => {
     selectedCard.value = card
     selectedStatus.value = status
+    reportingLost.value = lost
     reason.value = ''
     errorMessage.value = ''
     showModal.value = true
@@ -48,12 +59,15 @@ const closeModal = () => {
     showModal.value = false
     selectedCard.value = null
     selectedStatus.value = ''
+    reportingLost.value = false
     reason.value = ''
     errorMessage.value = ''
 }
 
 // Cambiar estado
 const updateStatus = () => {
+    if (processing.value) return
+
     if (!reason.value.trim()) {
         errorMessage.value = 'Debes indicar el motivo del cambio.'
         return
@@ -63,14 +77,15 @@ const updateStatus = () => {
         return
     }
 
+    processing.value = true
     router.patch(
-        route('nfc-cards.update-status', selectedCard.value.id),
-        {
-            status: selectedStatus.value,
-            reason: reason.value,
-        },
+        route(reportingLost.value ? 'nfc-cards.report-lost' : 'nfc-cards.update-status', selectedCard.value.id),
+        reportingLost.value
+            ? { reason: reason.value }
+            : { status: selectedStatus.value, reason: reason.value },
         {
             preserveScroll: true,
+            onFinish: () => { processing.value = false },
             onSuccess: () => {
                 closeModal()
             },
@@ -102,6 +117,7 @@ const updateStatus = () => {
                 </div>
 
                 <Link
+                    v-if="canManage"
                     :href="route('nfc-cards.create')"
                     class="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow hover:bg-indigo-700"
                 >
@@ -130,6 +146,7 @@ const updateStatus = () => {
                     </p>
 
                     <Link
+                        v-if="canManage"
                         :href="route('nfc-cards.create')"
                         class="mt-4 inline-block text-indigo-600 hover:text-indigo-800"
                     >
@@ -229,83 +246,39 @@ const updateStatus = () => {
                                 <td class="px-6 py-4">
                                     <div class="flex flex-wrap gap-2">
 
-                                        <!-- Tarjeta ACTIVA -->
-                                        <template v-if="card.status === 'active'">
-
+                                        <template v-if="canManage">
                                             <button
+                                                v-if="availableTransitions[card.id]?.includes('active')"
+                                                type="button"
+                                                @click="openStatusModal(card, 'active')"
+                                                class="rounded-md bg-green-100 px-3 py-2 text-xs font-medium text-green-700 hover:bg-green-200"
+                                            >
+                                                Reactivar
+                                            </button>
+                                            <button
+                                                v-if="availableTransitions[card.id]?.includes('blocked')"
                                                 type="button"
                                                 @click="openStatusModal(card, 'blocked')"
                                                 class="rounded-md bg-red-100 px-3 py-2 text-xs font-medium text-red-700 hover:bg-red-200"
                                             >
                                                 Bloquear
                                             </button>
-
                                             <button
+                                                v-if="availableTransitions[card.id]?.includes('suspended')"
                                                 type="button"
                                                 @click="openStatusModal(card, 'suspended')"
                                                 class="rounded-md bg-yellow-100 px-3 py-2 text-xs font-medium text-yellow-700 hover:bg-yellow-200"
                                             >
                                                 Suspender
                                             </button>
-
                                             <button
+                                                v-if="availableTransitions[card.id]?.includes('blocked')"
                                                 type="button"
-                                                @click="openStatusModal(card, 'replaced')"
-                                                class="rounded-md bg-gray-100 px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-200"
+                                                @click="openStatusModal(card, 'blocked', true)"
+                                                class="rounded-md bg-orange-100 px-3 py-2 text-xs font-medium text-orange-700 hover:bg-orange-200"
                                             >
-                                                Reemplazar
+                                                Reportar pérdida
                                             </button>
-
-                                        </template>
-
-                                        <!-- Tarjeta BLOQUEADA -->
-                                        <template v-if="card.status === 'blocked'">
-
-                                            <button
-                                                type="button"
-                                                @click="openStatusModal(card, 'active')"
-                                                class="rounded-md bg-green-100 px-3 py-2 text-xs font-medium text-green-700 hover:bg-green-200"
-                                            >
-                                                Reactivar
-                                            </button>
-
-                                            <button
-                                                type="button"
-                                                @click="openStatusModal(card, 'replaced')"
-                                                class="rounded-md bg-gray-100 px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-200"
-                                            >
-                                                Reemplazar
-                                            </button>
-
-                                        </template>
-
-                                        <!-- Tarjeta SUSPENDIDA -->
-                                        <template v-if="card.status === 'suspended'">
-
-                                            <button
-                                                type="button"
-                                                @click="openStatusModal(card, 'active')"
-                                                class="rounded-md bg-green-100 px-3 py-2 text-xs font-medium text-green-700 hover:bg-green-200"
-                                            >
-                                                Reactivar
-                                            </button>
-
-                                            <button
-                                                type="button"
-                                                @click="openStatusModal(card, 'blocked')"
-                                                class="rounded-md bg-red-100 px-3 py-2 text-xs font-medium text-red-700 hover:bg-red-200"
-                                            >
-                                                Bloquear
-                                            </button>
-
-                                            <button
-                                                type="button"
-                                                @click="openStatusModal(card, 'replaced')"
-                                                class="rounded-md bg-gray-100 px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-200"
-                                            >
-                                                Reemplazar
-                                            </button>
-
                                         </template>
 
                                         <!-- Ver historial -->
@@ -335,7 +308,7 @@ const updateStatus = () => {
         <div class="w-full max-w-md rounded-lg bg-white p-6 shadow-xl">
 
             <h2 class="text-xl font-bold text-gray-900">
-                Cambiar estado de tarjeta
+                {{ reportingLost ? 'Reportar pérdida de tarjeta' : 'Cambiar estado de tarjeta' }}
             </h2>
 
             <p class="mt-2 text-sm text-gray-600">
@@ -397,6 +370,7 @@ const updateStatus = () => {
 
                 <button
                     type="button"
+                    :disabled="processing"
                     @click="closeModal"
                     class="rounded-md bg-gray-100 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-200"
                 >
@@ -405,10 +379,11 @@ const updateStatus = () => {
 
                 <button
                     type="button"
+                    :disabled="processing"
                     @click="updateStatus"
                     class="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700"
                 >
-                    Confirmar cambio
+                    {{ processing ? 'Guardando…' : reportingLost ? 'Confirmar pérdida' : 'Confirmar cambio' }}
                 </button>
 
             </div>

@@ -23,7 +23,9 @@ const statusLabels = {
 const eventLabels = {
     registered: 'Registrada',
     active: 'Reactivada',
+    reactivated: 'Reactivada',
     blocked: 'Bloqueada',
+    lost: 'Bloqueada por pérdida',
     suspended: 'Suspendida',
     replaced: 'Reemplazada',
 }

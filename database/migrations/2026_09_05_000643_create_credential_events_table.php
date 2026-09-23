@@ -10,10 +10,6 @@ return new class extends Migration
 
     public function up(): void
     {
-        if (app()->environment('testing')) {
-            return;
-        }
-
         Schema::connection('mongodb')->create('credential_events', function (Blueprint $collection) {
             $collection->index('nfc_card_id');
             $collection->index('performed_by');
@@ -24,10 +20,6 @@ return new class extends Migration
 
     public function down(): void
     {
-        if (app()->environment('testing')) {
-            return;
-        }
-
         Schema::connection('mongodb')->dropIfExists('credential_events');
     }
 };

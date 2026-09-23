@@ -7,11 +7,17 @@ use App\Enums\StudentStatus;
 use App\Models\AcademicProgram;
 use App\Models\StudentProfile;
 use App\Models\User;
+use App\Support\StudentIdentityInput;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
 class StoreStudentRequest extends FormRequest
 {
+    protected function prepareForValidation(): void
+    {
+        $this->merge(StudentIdentityInput::normalize($this->only(['email', 'personal_email', 'enrollment_number'])));
+    }
+
     public function authorize(): bool
     {
         return $this->user()?->can('create', StudentProfile::class) ?? false;
@@ -48,7 +54,7 @@ class StoreStudentRequest extends FormRequest
             if (User::where('email', $this->input('email'))->exists()) {
                 $validator->errors()->add('email', 'El correo institucional ya está registrado.');
             }
-            if (StudentProfile::where('enrollment_number', strtoupper($this->input('enrollment_number')))->exists()) {
+            if (StudentProfile::where('enrollment_number', $this->input('enrollment_number'))->exists()) {
                 $validator->errors()->add('enrollment_number', 'La matrícula ya está registrada.');
             }
             if (! AcademicProgram::where('_id', $this->input('academic_program_id'))->where('campus_id', $this->input('campus_id'))->exists()) {

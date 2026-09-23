@@ -34,6 +34,8 @@ class StudentController extends Controller
         return Inertia::render('Students/Index', [
             'students' => $students,
             'filters' => $request->only(['search', 'status', 'campus']),
+            'canImportStudents' => $request->user()->can('create', StudentProfile::class),
+            'importErrors' => $request->session()->get('errors')?->getBag('default')->get('file') ?? [],
             'campuses' => Campus::where('is_active', true)->orderBy('name')->get(['id', 'name']),
             'statuses' => StudentStatus::options(),
             'statistics' => [

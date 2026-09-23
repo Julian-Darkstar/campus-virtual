@@ -16,10 +16,17 @@ class OAuthTokenController extends Controller
             'scope' => ['nullable', 'string'],
         ]);
 
-        return response()->json($tokens->issue(
-            $validated['client_id'],
-            $validated['client_secret'],
-            preg_split('/\s+/', trim($validated['scope'] ?? ''), -1, PREG_SPLIT_NO_EMPTY),
-        ));
+        try {
+            return response()->json($tokens->issue(
+                $validated['client_id'],
+                $validated['client_secret'],
+                preg_split('/\s+/', trim($validated['scope'] ?? ''), -1, PREG_SPLIT_NO_EMPTY),
+            ));
+        } catch (\InvalidArgumentException) {
+            return response()->json([
+                'error' => 'invalid_scope',
+                'message' => 'One or more requested scopes are not permitted for this client.',
+            ], 400);
+        }
     }
 }

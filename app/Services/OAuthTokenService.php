@@ -19,7 +19,12 @@ class OAuthTokenService
 
         $allowedScopes = $client->scopes ?? [];
         $allowedScopes = is_array($allowedScopes) ? $allowedScopes : iterator_to_array($allowedScopes);
-        $scopes = array_values(array_intersect($requestedScopes, $allowedScopes));
+
+        if (array_diff($requestedScopes, $allowedScopes) !== []) {
+            throw new \InvalidArgumentException('One or more requested scopes are not permitted for this client.');
+        }
+
+        $scopes = array_values($requestedScopes);
         $now = now()->timestamp;
         $expires = $now + config('oauth.access_token_ttl');
         $claims = [

@@ -23,7 +23,7 @@ class StudentStatusService
         $latest = $profile->statusHistory()->first();
         $status = $profile->academic_status;
         $data = [
-            'student_id' => (string) $profile->getKey(),
+            'student_id' => (string) $profile->user_id,
             'user_id' => (string) $profile->user_id,
             'name' => $profile->user?->name,
             'enrollment' => $profile->enrollment_number,

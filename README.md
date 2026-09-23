@@ -133,7 +133,7 @@ Este proyecto utiliza un flujo de Git con dos ramas principales:
 ### `develop`
 
 - **Rama de integración continua** donde se agrupan las features en construcción.
-- Contiene trabajo en progreso, datos simulados y features pendientes de finalizar.
+- Contiene trabajo en progreso y funcionalidades pendientes de finalizar.
 - Punto de referencia para ver el estado actual del desarrollo.
 - Cambios se agrupan en commits temáticos antes de proponer PR a `main`.
 
@@ -170,10 +170,10 @@ npm run dev
 
 Con una sesión autenticada están disponibles:
 
-- `/security/qr`: genera un QR dinámico de un solo uso y permite escanear/validar otro QR con la cámara.
-- `/security/devices`: vincula, consulta y desvincula dispositivos del usuario.
-- `POST /api/v1/identity/qr/generate`: genera un token QR para clientes API autenticados con Sanctum.
-- `POST /api/v1/identity/qr-validate`: valida un token, registra el resultado y consume los tokens dinámicos.
+- `/identidad/qr`: muestra identificación QR, genera un QR dinámico de un solo uso y ofrece validación web autorizada.
+- `/seguridad/dispositivos`: consulta y administra dispositivos/sesiones del usuario.
+
+Para servicios, `POST /api/v1/identity/qr-validate` valida el QR mediante OAuth Bearer con el scope `identity:qr:validate`; registra el resultado y consume los tokens dinámicos. No existe un endpoint API público de generación QR por Sanctum.
 
 Las migraciones crean las colecciones MongoDB `devices`, `qr_tokens` y `qr_validations`, con índices para usuario,
 token y expiración. La cámara requiere permisos del navegador y, en producción, un contexto HTTPS.
@@ -222,75 +222,56 @@ curl -X POST http://127.0.0.1:8002/api/oauth/token \
 
 Usa el token como `Authorization: Bearer <access_token>` para las rutas `/api/v1`. Los tokens son JWT firmados, tienen issuer/audience, expiración y scopes. En producción define `OAUTH2_SIGNING_KEY` independiente de `APP_KEY` y rota los clientes periódicamente.
 
-Los cambios de dominio implementan un contrato de eventos versionado (`*.v1`) y se guardan en la colección MongoDB `event_outbox` para que un publicador externo pueda entregarlos a otros servicios sin acoplarlos a las colecciones internas.
+Los cambios de dominio implementan un contrato de eventos versionado (`*.v1`) y se guardan en la colección MongoDB `event_outbox` para que un publicador externo pueda entregarlos a otros servicios sin acoplarlos a las colecciones internas. El contrato de integración y las guías de Equipos 2–7 están en [docs/integration/TEAM-1-INTEGRATION.md](docs/integration/TEAM-1-INTEGRATION.md).
 
 El publicador incluido se ejecuta con `php artisan events:publish`. Configura `EVENTS_SINK_URL` y, si el receptor lo requiere, `EVENTS_SINK_TOKEN`. Los eventos publicados reciben `published_at`; los fallidos conservan `attempts` y `last_error` para reintentos. En producción se recomienda ejecutarlo mediante scheduler o worker.
 
 ## Cambios Recientes
 
-### Versión 0.2.0-dev (7 de septiembre de 2026)
+### Resumen de capacidades actuales
 
 #### Entrega actual del módulo 1
-- **Módulo 1.1:** gestión académica en MongoDB con perfiles, catálogos, historial, CRUD e importación CSV.
+- **Módulo 1.1:** gestión académica en MongoDB con perfiles, catálogos, historial, listado, alta, edición e importación CSV.
 - **Módulo 1.2:** autenticación de dos factores integrada con Fortify.
 - **Módulo 1.3:** RBAC contextual con roles y scopes.
-- **Módulos 1.4 y 1.5:** registro y ciclo de vida de credenciales NFC.
-- **Módulos 1.6 y 1.7:** identidad QR, dispositivos, sesiones confiables y reautenticación.
-- **Módulos 1.8 y 1.9:** interfaz y contrato API disponibles; la persistencia de condición, consentimientos y preferencias continúa pendiente.
+- **Módulo 1.4:** registro NFC; **1.5 parcial:** bloqueo, pérdida, suspensión y reactivación, con reemplazo real pendiente.
+- **Módulo 1.6 parcial:** validación QR disponible; limpieza final de secretos legacy y reglas operativas pendientes. **1.7:** dispositivos, sesiones confiables y reautenticación.
+- **Módulos 1.8 y 1.9:** estado académico persistente e historial; consentimientos y preferencias persistentes mediante sesión/Sanctum.
 - **Integración entre servicios:** OAuth 2.0 `client_credentials`, JWT, scopes y middleware Bearer.
 - **Eventos de dominio:** eventos versionados, outbox MongoDB idempotente y comando `events:publish` con reintentos.
-- **Calidad:** 29 pruebas correctas, 71 aserciones y build frontend exitoso.
+- **Calidad:** pruebas automatizadas y build frontend disponibles; véase el baseline del snapshot en la guía de integración.
 
-#### Documentación
-- La documentación formal del módulo 1 se encuentra en `/home/darkstar/IS/documentacion/terminada/modulo-1`.
-- Incluye SRS IEEE 830, plan de desarrollo, arquitectura/API, plan de calidad, seguimiento y cierre.
-
-### Versión 0.1.0-dev (28 de agosto de 2026)
-
-#### Características Implementadas
-- **Módulo 1.8**: Validación de condición estudiantil con estado, matrícula, programa y campus.
-- **Módulo 1.9**: Gestión de consentimientos y preferencias de comunicación (email, push, SMS).
-- **API REST v1**: Endpoints documentados bajo `/api/v1` con datos simulados:
-  - Estado académico: GET `/students/{studentId}/status`
-  - Historial: GET `/students/{studentId}/status/history`
-  - Consentimientos: GET/POST/DELETE `/students/{studentId}/consents`
-  - Preferencias: GET/PATCH `/students/{studentId}/preferences`
-- **Identidad Visual**: Logo SVG, paleta de colores institucionales, rediseño de interfaz pública y autenticada.
-- **Tipografía**: Fuente Manrope como identidad visual del proyecto.
-
-#### Interfaz de Usuario
-- Panel protegido en `/student-services` con módulos 1.8 y 1.9.
-- Dashboard actualizado con acceso directo a nuevos módulos.
-- Diseño responsivo con colores institucionales: azul marino (#00338D), gris pizarra (#64748B), verde validación (#10B981).
+La guía [Team 1 — Identity Integration Contract](docs/integration/TEAM-1-INTEGRATION.md) distingue las APIs OAuth para servicios de las rutas Sanctum y web, y enumera las capacidades todavía pendientes.
 
 ## Estado del proyecto
 
 - [x] Estructura inicial Laravel.
 - [x] Vue 3 + Inertia.js + Vite.
 - [x] Autenticación base con Fortify y Breeze.
-- [x] Módulo 1.1: perfiles académicos, catálogos, historial, CRUD e importación CSV adaptados a MongoDB.
+- [x] Módulo 1.1: perfiles académicos, catálogos, historial, listado, alta, edición e importación CSV adaptados a MongoDB.
 - [x] Módulo 1.2: 2FA con Fortify.
 - [x] Módulo 1.3: RBAC contextual.
-- [x] Módulos 1.4 y 1.5: registro y ciclo de vida de credenciales NFC.
-- [x] Módulos 1.6 y 1.7: identidad QR, dispositivos y sesiones confiables.
+- [x] Módulo 1.4: registro NFC y ciclo ordinario de bloqueo/pérdida/suspensión/reactivación.
+- [ ] Módulo 1.5 completo: falta reemplazo real de credencial NFC.
+- [ ] Módulo 1.6 completo: validación QR disponible; fases legacy y reglas operativas pendientes.
+- [x] Módulo 1.7: dispositivos y sesiones confiables.
 - [x] Migraciones iniciales de usuarios y 2FA.
 - [x] Módulo 1.8: Validación de condición estudiantil (API + UI).
 - [x] Módulo 1.9: Consentimientos y preferencias de comunicación (API + UI).
 - [x] Identidad visual: Logo, colores institucionales, rediseño de pantallas.
 - [x] Endpoints API REST v1 documentados y funcionales.
-- [x] Pruebas automatizadas contra MongoDB: 29 pruebas correctas.
+- [x] Pruebas automatizadas contra MongoDB.
 - [x] Integración de autenticación inter-servicios OAuth 2.0.
-- [ ] Servicios y contratos de integración con los demás equipos.
+- [x] Contratos de integración disponibles documentados para los demás equipos; API NFC interequipos y otras funciones indicadas como pendientes.
 - [x] Contratos de eventos versionados y outbox MongoDB.
 
 ### Notas de integración
 
 - El módulo 1.1 se portó desde la rama SQL Server a documentos MongoDB (`campuses`, `academic_programs`, `student_profiles` y `academic_status_history`).
-- La interfaz administrativa está disponible en `/students`; requiere un usuario con rol `admin` o `student_manager`.
-- Los catálogos e índices de 1.1 se inicializan con `php artisan db:seed --class=StudentCatalogSeeder`.
+- La interfaz administrativa y la importación CSV están disponibles en `/students`; requieren un rol global `admin`, `maestro` o `student_manager`.
+- `StudentCatalogSeeder` inicializa los catálogos; los índices únicos de usuarios y perfiles se crean mediante migraciones, sin depender del seeder.
 - La importación CSV valida todas las filas antes de escribir. El contenedor local MongoDB usa el replica set `rs0`, habilitando transacciones multi-documento para atomicidad estricta.
-- Los módulos 1.8 y 1.9 aún usan datos simulados y deben conectarse a `StudentProfile` y sus eventos cuando se cierre el contrato de dominio.
-- La rama de entrega del equipo es `modulo-1`; `develop` conserva la integración continua y `main` permanece estable.
+- El estado académico y los consentimientos/preferencias persisten datos reales. Los endpoints académicos OAuth aceptan `User._id`; los de consentimientos/preferencias usan Sanctum y no son un contrato OAuth de servicio.
 
 ## Repositorio
 

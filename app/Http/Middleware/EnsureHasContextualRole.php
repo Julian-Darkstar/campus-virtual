@@ -11,7 +11,9 @@ class EnsureHasContextualRole
     public function handle(Request $request, Closure $next, string $role, ?string $scopeType = null): Response
     {
         $user = $request->user();
-        $scopeId = $request->route('scopeId') ?? $request->input('scope_id');
+        $scopeId = $scopeType === null
+            ? null
+            : ($request->route('scopeId') ?? $request->input('scope_id'));
 
         if (! $user || ! $user->hasRole($role, $scopeType, $scopeId)) {
             abort(403, 'No tienes los permisos requeridos en este contexto.');

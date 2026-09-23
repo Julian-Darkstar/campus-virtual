@@ -44,7 +44,7 @@ class User extends Authenticatable
 
     public function getTwoFactorEnabledAttribute(): bool
     {
-        return ! empty($this->two_factor_secret);
+        return ! is_null($this->two_factor_confirmed_at);
     }
 
     protected function casts(): array
@@ -150,6 +150,11 @@ class User extends Authenticatable
     {
         return $this->hasOne(CommunicationPreference::class, 'user_id');
     }
+
+    public function qrTokens()
+    {
+        return $this->hasMany(QrToken::class, 'user_id');
+    }
     /**
      * Tarjetas NFC pertenecientes al usuario.
      */
@@ -176,6 +181,26 @@ class User extends Authenticatable
 
     public function assignRole(string $roleName, ?string $scopeType = null, ?string $scopeId = null): void
     {
+        // Defensa en profundidad: nunca persistir un rol que no exista en el
+        // catálogo oficial, sin importar qué controlador llame a este método.
+        if (! in_array($roleName, Role::VALID_ROLES, true)) {
+            throw new \InvalidArgumentException("El rol '{$roleName}' no es un rol válido.");
+        }
+
+        $scopeId = $scopeId === null ? null : (string) $scopeId;
+
+        if (($scopeType === null) !== ($scopeId === null)) {
+            throw new \InvalidArgumentException('Una asignación de rol debe ser global o incluir tipo e identificador de contexto.');
+        }
+
+        if ($scopeType !== null && ! in_array($scopeType, Role::VALID_SCOPE_TYPES, true)) {
+            throw new \InvalidArgumentException("El contexto '{$scopeType}' no es válido.");
+        }
+
+        if ($scopeId !== null && $scopeId === '') {
+            throw new \InvalidArgumentException('El identificador de contexto no puede estar vacío.');
+        }
+
         $roles = $this->roles ?? [];
 
         foreach ($roles as $role) {
@@ -201,19 +226,38 @@ class User extends Authenticatable
 
     public function hasRole(string $roleName, ?string $scopeType = null, ?string $scopeId = null): bool
     {
+        $scopeId = $scopeId === null ? null : (string) $scopeId;
+
+        if (($scopeType === null) !== ($scopeId === null)) {
+            return false;
+        }
+
+        if ($scopeType !== null && ! in_array($scopeType, Role::VALID_SCOPE_TYPES, true)) {
+            return false;
+        }
+
         $roles = $this->roles ?? [];
 
         foreach ($roles as $role) {
-            if (($role['name'] ?? null) === $roleName) {
-                if (is_null($scopeType) && is_null($role['scope_type'] ?? null)) {
-                    return true;
-                }
-                if (
-                    ($role['scope_type'] ?? null) === $scopeType &&
-                    ($role['scope_id'] ?? null) === $scopeId
-                ) {
-                    return true;
-                }
+            if (($role['name'] ?? null) !== $roleName) {
+                continue;
+            }
+
+            $storedScopeType = $role['scope_type'] ?? null;
+            $storedScopeId = ($role['scope_id'] ?? null) === null
+                ? null
+                : (string) $role['scope_id'];
+
+            if ($scopeType === null && $storedScopeType === null && $storedScopeId === null) {
+                return true;
+            }
+
+            if (
+                $scopeType !== null &&
+                $storedScopeType === $scopeType &&
+                $storedScopeId === $scopeId
+            ) {
+                return true;
             }
         }
 

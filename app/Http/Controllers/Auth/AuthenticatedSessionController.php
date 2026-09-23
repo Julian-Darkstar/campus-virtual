@@ -7,7 +7,10 @@ use App\Http\Requests\Auth\LoginRequest;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Route;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -29,9 +32,18 @@ class AuthenticatedSessionController extends Controller
      */
     public function store(LoginRequest $request): RedirectResponse
     {
+        $request->ensureIsNotRateLimited();
         $user = \App\Models\User::where('email', $request->email)->first();
 
-        if ($user && ! empty($user->two_factor_secret) && \Illuminate\Support\Facades\Hash::check($request->password, $user->password)) {
+        if ($user?->account_activation_pending === true) {
+            RateLimiter::hit($request->throttleKey());
+
+            throw ValidationException::withMessages([
+                'email' => trans('auth.failed'),
+            ]);
+        }
+
+        if ($user && ! is_null($user->two_factor_confirmed_at) && is_string($user->password) && Hash::check($request->password, $user->password)) {
             $request->session()->put([
                 'login.id' => (string) $user->_id,
                 'login.remember' => $request->boolean('remember'),

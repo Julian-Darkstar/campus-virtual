@@ -21,7 +21,8 @@ class QrValidation extends Model
         'qr_token_id',
         'user_id',
         'validated_by_user_id',
-        'result', // valid, expired, consumed, revoked, not_found
+        'validator_label', // p.ej. "Biblioteca Central - Terminal 3" (no siempre hay un User validador)
+        'result', // valid, expired, consumed, revoked, not_found, invalid_signature
         'context', // p.ej. "biblioteca", "evento-123", "caja-asociacion-2"
         'ip_address',
     ];

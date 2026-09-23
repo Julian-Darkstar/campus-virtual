@@ -18,6 +18,14 @@ class TwoFactorChallengeController extends Controller
             return redirect()->route('login');
         }
 
+        $user = User::find($request->session()->get('login.id'));
+
+        if (! $user || is_null($user->two_factor_confirmed_at)) {
+            $request->session()->forget(['login.id', 'login.remember']);
+
+            return redirect()->route('login');
+        }
+
         return Inertia::render('Auth/TwoFactorChallenge');
     }
 
@@ -29,7 +37,9 @@ class TwoFactorChallengeController extends Controller
 
         $user = User::find($request->session()->get('login.id'));
 
-        if (! $user) {
+        if (! $user || is_null($user->two_factor_confirmed_at)) {
+            $request->session()->forget(['login.id', 'login.remember']);
+
             return redirect()->route('login');
         }
 
